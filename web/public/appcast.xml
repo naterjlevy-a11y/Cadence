@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Mellotron Sparkle appcast.
+  Add one <item> per release. Generate sparkle:edSignature and length with:
+
+    ./sign_update path/to/Mellotron.dmg
+
+  (sign_update ships in the Sparkle release zip — see STEPS.md.)
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Mellotron Updates</title>
+    <link>https://mellotron.me/appcast.xml</link>
+    <description>Mellotron release feed</description>
+    <language>en</language>
+
+    <!--
+    <item>
+      <title>Version 0.1.0</title>
+      <pubDate>Sat, 1 Jun 2026 00:00:00 +0000</pubDate>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <ul>
+          <li>First public release</li>
+          <li>Groq Whisper transcription</li>
+          <li>Cloud free tier (3 hours/month)</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://mellotron.me/releases/Mellotron-0.1.0.dmg"
+        sparkle:edSignature="REPLACE_WITH_OUTPUT_OF_sign_update"
+        length="REPLACE_WITH_BYTE_LENGTH"
+        type="application/octet-stream" />
+    </item>
+    -->
+  </channel>
+</rss>

@@ -1,0 +1,59 @@
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --ink: #0a0812;
+  --surface: #13101e;
+  --mello: #b88eff;
+}
+
+html, body {
+  height: 100%;
+  background: var(--ink);
+  color: #f6f4f1;
+}
+
+body {
+  font-feature-settings: "ss01", "ss02", "cv11";
+}
+
+.grain {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+/* Flat full-opacity hairline. No gradient fade. */
+.hairline {
+  background-color: rgba(255, 255, 255, 0.10);
+}
+
+.italic-display {
+  font-family: "Instrument Serif", serif;
+  font-style: italic;
+}
+
+/* Soft scroll for editorial flow */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbar in horizontal marquee */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.pulse-soft {
+  animation: pulse-soft 2.4s ease-in-out infinite;
+}

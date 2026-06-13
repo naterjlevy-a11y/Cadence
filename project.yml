@@ -1,0 +1,90 @@
+name: Mellotron
+options:
+  bundleIdPrefix: com.mellotron
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+  groupSortPosition: top
+  generateEmptyDirectories: true
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.4"
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: "8.36.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    PRODUCT_BUNDLE_IDENTIFIER: com.mellotron.Mellotron
+    # Add your Apple ID in Xcode → Settings → Accounts, then pick your Personal Team
+    # on the Mellotron target. Do NOT force CODE_SIGN_IDENTITY to "-" — that causes
+    # a new identity every rebuild and breaks Keychain + permissions.
+    DEVELOPMENT_TEAM: T4LW233MUP
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    GENERATE_INFOPLIST_FILE: NO
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+targets:
+  Mellotron:
+    type: application
+    platform: macOS
+    sources:
+      - path: Mellotron
+        excludes:
+          - "Resources/Info.plist"
+          - "Resources/Mellotron.entitlements"
+    dependencies:
+      - package: Sparkle
+        product: Sparkle
+      - package: Sentry
+        product: Sentry
+    resources:
+      - Mellotron/Resources/Assets.xcassets
+      - Mellotron/Resources/CloudConfig.example.plist
+      - Mellotron/Resources/CloudConfig.plist
+      - Mellotron/Resources/Fonts
+    settings:
+      base:
+        INFOPLIST_FILE: Mellotron/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Mellotron/Resources/Mellotron.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_APP_SANDBOX: NO
+        LSUIElement: YES
+    info:
+      path: Mellotron/Resources/Info.plist
+      properties:
+        CFBundleName: Mellotron
+        CFBundleDisplayName: Mellotron
+        LSMinimumSystemVersion: "14.0"
+        LSUIElement: true
+        NSHighResolutionCapable: true
+        NSMicrophoneUsageDescription: "Mellotron uses your microphone only while you hold your push-to-talk key to transcribe your speech."
+        NSSpeechRecognitionUsageDescription: "Mellotron transcribes your held-to-record speech locally on-device whenever possible."
+        NSAppleEventsUsageDescription: "Mellotron uses Apple Events to focus or open destinations like Claude, ChatGPT, Gemini, Google Docs, and your browser."
+        NSAppleScriptEnabled: false
+        NSPrincipalClass: NSApplication
+        NSSupportsAutomaticTermination: false
+        NSSupportsSuddenTermination: false
+        CFBundlePackageType: APPL
+        LSApplicationCategoryType: public.app-category.productivity
+        # Custom URL scheme so OAuth providers (Google, GitHub) can redirect
+        # back into Mellotron after the user signs in via a browser.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.mellotron.Mellotron.auth
+            CFBundleURLSchemes:
+              - mellotron
+        # Sparkle auto-update feed. Update SUFeedURL once your appcast.xml is hosted.
+        # Generate SUPublicEDKey with: ./bin/generate_keys (from Sparkle release zip).
+        SUFeedURL: "https://web-six-xi-79.vercel.app/appcast.xml"
+        SUEnableAutomaticChecks: true
+        SUEnableInstallerLauncherService: true
+        SUPublicEDKey: "REPLACE_WITH_ED25519_PUBLIC_KEY"

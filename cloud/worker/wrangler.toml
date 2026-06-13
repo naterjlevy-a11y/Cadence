@@ -1,0 +1,23 @@
+name = "mellotron-api"
+main = "src/index.ts"
+compatibility_date = "2024-06-01"
+
+# Route: api.yourdomain.com → this worker (set in Cloudflare dashboard)
+# routes = [{ pattern = "api.mellotron.me/*", zone_name = "mellotron.me" }]
+
+[vars]
+# Non-secret defaults. Override in dashboard if needed.
+FREE_MONTHLY_SECONDS = "10800"
+
+# Optional non-secret Stripe redirect URLs (override in dashboard if you like):
+# CHECKOUT_SUCCESS_URL = "https://your-domain/welcome"
+# CHECKOUT_CANCEL_URL  = "https://your-domain/account"
+
+# Secrets (set via `wrangler secret put NAME`):
+#   GROQ_API_KEY
+#   SUPABASE_URL          e.g. https://xxxx.supabase.co
+#   SUPABASE_ANON_KEY
+#   SUPABASE_SERVICE_ROLE_KEY
+#   STRIPE_SECRET_KEY      restricted key (rk_live_…) — Checkout + Billing Portal write
+#   STRIPE_PRICE_ID        the $5/mo recurring price (price_…)
+#   STRIPE_WEBHOOK_SECRET  whsec_… from the webhook endpoint you create

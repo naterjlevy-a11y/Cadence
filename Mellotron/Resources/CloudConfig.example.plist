@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SupabaseURL</key>
+	<string>https://YOUR_PROJECT_REF.supabase.co</string>
+	<key>SupabaseAnonKey</key>
+	<string>YOUR_SUPABASE_ANON_KEY</string>
+	<key>APIBaseURL</key>
+	<string>https://api.mellotron.me</string>
+	<key>AuthRedirectURL</key>
+	<string>mellotron://auth/callback</string>
+	<key>StripePublishableKey</key>
+	<string>pk_test_YOUR_STRIPE_PUBLISHABLE_KEY</string>
+	<key>SentryDSN</key>
+	<string></string>
+</dict>
+</plist>

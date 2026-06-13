@@ -1,0 +1,77 @@
+# Build, sign, notarize, and upload Mellotron DMG on version tags.
+#
+# Required GitHub repository secrets:
+#   APPLE_CERTIFICATE_P12_BASE64   — Developer ID Application cert (.p12), base64
+#   APPLE_CERTIFICATE_PASSWORD
+#   APPLE_ID                       — Apple ID email for notarization
+#   APPLE_APP_SPECIFIC_PASSWORD
+#   APPLE_TEAM_ID
+#
+# Optional:
+#   SPARKLE_PRIVATE_KEY            — Ed25519 key for auto-updates
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Import signing certificate
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN=build.keychain
+          security create-keychain -p "" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > cert.p12
+          security import cert.p12 -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN"
+
+      - name: Build Release
+        run: |
+          xcodebuild -project Mellotron.xcodeproj \
+            -scheme Mellotron \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            build
+
+      - name: Create DMG
+        run: |
+          APP=$(find ~/Library/Developer/Xcode/DerivedData -name 'Mellotron.app' -path '*/Release/*' | head -1)
+          hdiutil create -volname Mellotron -srcfolder "$APP" -ov -format UDZO Mellotron.dmg
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit Mellotron.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple Mellotron.dmg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mellotron-dmg
+          path: Mellotron.dmg
