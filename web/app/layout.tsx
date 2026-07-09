@@ -3,12 +3,13 @@ import type { Metadata } from "next";
 import { AuthHashBridge } from "./components/AuthHashBridge";
 
 export const metadata: Metadata = {
-  title: "Mellotron — Voice routing for your Mac",
+  title: "Cadence — Hold a key. Talk to anything.",
   description:
-    "Hold a key, talk to any app. Mellotron transcribes with Groq Whisper, cleans your text with AI, and pastes it where it belongs.",
+    "Push-to-talk dictation for your Mac. Hold a key, say where your words should go — Claude, ChatGPT, Docs, anywhere — release, done.",
   openGraph: {
-    title: "Mellotron",
-    description: "Push-to-talk dictation for macOS, powered by Groq Whisper.",
+    title: "Cadence — Hold a key. Talk to anything.",
+    description:
+      "Push-to-talk dictation for your Mac. Speak naturally, release, and your words land where you said — cleaned up and pasted.",
     type: "website",
   },
 };

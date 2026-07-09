@@ -6,12 +6,16 @@ const config: Config = {
     extend: {
       colors: {
         mello: {
-          DEFAULT: "#b88eff",
-          deep: "#8e6ae8",
-          glow: "#dcc6ff",
-          ink: "#0a0812",
-          surface: "#13101e",
-          paper: "#f6f4f1",
+          DEFAULT: "#7c9cff",
+          deep: "#5c7ce0",
+          glow: "#b7c6ff",
+          ink: "#0b0d12",
+          surface: "#141821",
+          paper: "#f7f9ff",
+          peri: "#8fa8ff",
+          coral: "#ffb454",
+          sky: "#dbe4ff",
+          cream: "#f7f9ff",
         },
       },
       fontFamily: {

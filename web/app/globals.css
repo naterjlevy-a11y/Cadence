@@ -6,15 +6,25 @@
 
 :root {
   color-scheme: dark;
-  --ink: #0a0812;
-  --surface: #13101e;
-  --mello: #b88eff;
+  --ink: #0b0d12;
+  --surface: #141821;
+  --mello: #7c9cff;
+  --peri: #8fa8ff;
+  --coral: #ffb454;
+  --cream: #f7f9ff;
+  --sky: #dbe4ff;
+}
+
+/* The light "sky world" — lavender melting into cream, their photo-to-flat trick */
+.sky-world {
+  background: linear-gradient(to bottom, var(--sky) 0%, #eef2ff 34%, var(--cream) 72%);
+  color: var(--ink);
 }
 
 html, body {
   height: 100%;
   background: var(--ink);
-  color: #f6f4f1;
+  color: var(--cream);
 }
 
 body {
@@ -36,12 +46,18 @@ body {
   font-style: italic;
 }
 
-/* Soft scroll for editorial flow */
+/* Soft scroll for editorial flow — Lenis overrides when active */
 html {
   scroll-behavior: smooth;
 }
+html.lenis {
+  scroll-behavior: auto;
+}
+html.lenis body {
+  overflow-x: clip;
+}
 
-/* Hide scrollbar in horizontal marquee */
+/* Hide scrollbar in horizontal rails/marquees */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -53,7 +69,209 @@ html {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
 }
-
 .pulse-soft {
   animation: pulse-soft 2.4s ease-in-out infinite;
+}
+
+/* ─── The keycap ──────────────────────────────────────────────────────── */
+
+.keycap {
+  position: relative;
+  width: clamp(150px, 30vw, 210px);
+  height: clamp(64px, 12vw, 84px);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.keycap-skirt {
+  position: absolute;
+  inset: 8px 0 0 0;
+  border-radius: 1.1rem;
+  background: #08060e;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.6);
+}
+
+.keycap-face {
+  position: absolute;
+  inset: 0 0 8px 0;
+  display: grid;
+  place-items: center;
+  border-radius: 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(to bottom, #1b1728, #13101e);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -6px 12px rgba(0, 0, 0, 0.35);
+  will-change: transform;
+}
+
+.keycap-pressed .keycap-face {
+  border-color: rgba(124, 156, 255, 0.55);
+  color: var(--mello);
+}
+
+@keyframes keycap-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.006); }
+}
+.keycap-breathe {
+  animation: keycap-breathe 3.4s ease-in-out infinite;
+}
+
+/* ─── Fly layer for the release animation ─────────────────────────────── */
+
+.fly-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+
+/* ─── Destination tiles ───────────────────────────────────────────────── */
+
+.tile-lit {
+  box-shadow: 0 0 0 1px rgba(124, 156, 255, 0.35);
+}
+
+.dest-tile,
+.dest-card {
+  will-change: transform;
+}
+
+/* Break the perfect lattice — editorial stagger on the destinations grid */
+@media (min-width: 1024px) {
+  .dest-card:nth-child(5n + 2),
+  .dest-card:nth-child(5n + 4) {
+    margin-top: 1.75rem;
+  }
+}
+
+/* The "here" tile reads as a focused text field on the page itself */
+.here-field {
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 1px rgba(124, 156, 255, 0.4);
+}
+
+@keyframes caret-blink {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}
+.here-caret {
+  display: inline-block;
+  width: 1px;
+  height: 0.9em;
+  margin-right: 3px;
+  vertical-align: -0.12em;
+  background: var(--mello);
+  animation: caret-blink 1.1s steps(1) infinite;
+}
+
+/* ─── Marquee belt ────────────────────────────────────────────────────── */
+
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.marquee-belt {
+  animation: marquee-scroll 36s linear infinite;
+}
+
+/* ─── Outlined display text (marquee bands) ───────────────────────────── */
+
+.text-outline {
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(124, 156, 255, 0.28);
+}
+
+/* ─── Pill portal (the aerodynamics window pass-through, ours) ────────── */
+
+.portal-overlay {
+  /* full rect minus a pill hole; layer-2 mask-size is driven by --hole-w/--hole-h */
+  will-change: -webkit-mask-size, mask-size;
+  -webkit-mask-image: linear-gradient(#fff, #fff),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 360 138'%3E%3Crect width='360' height='138' rx='69' fill='white'/%3E%3C/svg%3E");
+  mask-image: linear-gradient(#fff, #fff),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 360 138'%3E%3Crect width='360' height='138' rx='69' fill='white'/%3E%3C/svg%3E");
+  -webkit-mask-size: 100% 100%, var(--hole-w, 360px) var(--hole-h, 138px);
+  mask-size: 100% 100%, var(--hole-w, 360px) var(--hole-h, 138px);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-composite: source-out;
+  mask-composite: subtract;
+}
+
+.portal-frame {
+  will-change: width, height, opacity;
+}
+
+.portal-line {
+  will-change: transform;
+}
+
+/* Lock scroll during the preloader */
+html.preloading {
+  overflow: hidden;
+}
+
+/* ─── Reduced motion: static, readable, unpinned ──────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .marquee-belt,
+  .pulse-soft,
+  .keycap-breathe,
+  .here-caret {
+    animation: none;
+  }
+  /* unpin the three-movements scene */
+  .tm-section {
+    height: auto !important;
+  }
+  .tm-sticky {
+    position: static !important;
+    height: auto !important;
+    padding: 4rem 0;
+  }
+  /* show all narration blocks + end states */
+  .tm-block-1, .tm-block-2, .tm-block-3,
+  .tm-stamp, .tm-typed, .tm-caption-3,
+  .pv-station,
+  .alias-resolved {
+    opacity: 1 !important;
+  }
+  .alias-heard span {
+    opacity: 1 !important;
+  }
+}
+
+/* ─── Light-world keycap ──────────────────────────────────────────────── */
+
+.sky-world .keycap-skirt {
+  background: #b9c4e0;
+  box-shadow: 0 10px 34px rgba(60, 80, 140, 0.28);
+}
+.sky-world .keycap-face {
+  background: linear-gradient(to bottom, #ffffff, #e9edf8);
+  color: rgba(11, 13, 18, 0.6);
+  border-color: rgba(11, 13, 18, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -6px 12px rgba(11, 13, 18, 0.07);
+}
+.sky-world .keycap-pressed .keycap-face {
+  border-color: rgba(92, 124, 224, 0.6);
+  color: #5c7ce0;
+}
+.sky-world .here-field {
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 1px rgba(92, 124, 224, 0.45);
 }
