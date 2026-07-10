@@ -361,132 +361,111 @@ private struct PermissionsStep: View {
     @ObservedObject private var permissions = PermissionsManager.shared
     let onContinue: () -> Void
 
+    private var allGranted: Bool {
+        permissions.microphone == .granted &&
+        permissions.speechRecognition == .granted &&
+        permissions.accessibility == .granted &&
+        permissions.inputMonitoring == .granted
+    }
+
     var body: some View {
         StepShell(
-            title: "Grant *permissions*.",
-            subtitle: "Cadence needs four macOS permissions. Grant each one, then continue — you can fix stale toggles later with Permission Repair.",
-            primaryLabel: "Continue",
+            title: "A few quick permissions.",
+            subtitle: "Two are a single tap. Two need one toggle in System Settings — Cadence will already be listed, so it's just flipping a switch.",
+            primaryLabel: allGranted ? "All set — continue" : "Continue",
             onPrimary: onContinue
         ) {
-            VStack(alignment: .leading, spacing: 10) {
-                OnboardingPermissionRow(
-                    title: "Microphone",
-                    detail: "Records only while you hold your key.",
-                    state: permissions.microphone,
-                    grant: { permissions.requestMicrophone { _ in } },
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
-                )
-                OnboardingPermissionRow(
-                    title: "Speech Recognition",
-                    detail: "On-device transcription when using Apple Speech.",
-                    state: permissions.speechRecognition,
-                    grant: { permissions.requestSpeechRecognition { _ in } },
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
-                )
-                OnboardingPermissionRow(
-                    title: "Accessibility",
-                    detail: "Focuses apps and pastes dictated text.",
-                    state: permissions.accessibility,
-                    grant: { permissions.openAccessibilitySettings() },
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-                )
-                OnboardingPermissionRow(
-                    title: "Input Monitoring",
-                    detail: "Detects your push-to-talk key globally.",
-                    state: permissions.inputMonitoring,
-                    grant: { permissions.requestInputMonitoring() },
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
-                )
-                ApplicationsLocationCard()
-                RelaunchCard(reason: "After Accessibility or Input Monitoring, macOS may need Cadence to relaunch once.")
+            VStack(alignment: .leading, spacing: 18) {
+                // One tap
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("One tap")
+                        .font(.cadLabel(11))
+                        .foregroundStyle(Color.textSecondary)
+                    OnboardingPermRow(
+                        title: "Microphone",
+                        detail: "Records only while you hold your key.",
+                        state: permissions.microphone,
+                        action: { permissions.requestMicrophone { _ in } },
+                        settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+                    )
+                    OnboardingPermRow(
+                        title: "Speech Recognition",
+                        detail: "Powers on-device transcription.",
+                        state: permissions.speechRecognition,
+                        action: { permissions.requestSpeechRecognition { _ in } },
+                        settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
+                    )
+                }
+
+                // One toggle in Settings
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("One toggle in Settings")
+                        .font(.cadLabel(11))
+                        .foregroundStyle(Color.textSecondary)
+                    OnboardingPermRow(
+                        title: "Accessibility",
+                        detail: "Lets Cadence paste your words into any app.",
+                        state: permissions.accessibility,
+                        action: { permissions.openAccessibilitySettings() },
+                        settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                        opensSettings: true
+                    )
+                    OnboardingPermRow(
+                        title: "Input Monitoring",
+                        detail: "Detects your push-to-talk key anywhere.",
+                        state: permissions.inputMonitoring,
+                        action: { permissions.requestInputMonitoring() },
+                        settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+                        opensSettings: true
+                    )
+                    Text("When Settings opens, flip the switch next to Cadence. This window updates on its own.")
+                        .font(.cadBody(11))
+                        .foregroundStyle(Color.textTertiary)
+                        .padding(.top, 2)
+                }
             }
         }
     }
 }
 
-private struct OnboardingPermissionRow: View {
+/// One permission row: label + live status + the single right action.
+/// Green check appears automatically when granted (parent polls).
+private struct OnboardingPermRow: View {
     let title: String
     let detail: String
     let state: PermissionStatus
-    let grant: () -> Void
+    let action: () -> Void
     let settingsURL: String
+    var opensSettings: Bool = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: glyph)
-                .foregroundStyle(tint)
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .semibold))
-                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(state == .granted ? Color.green.opacity(0.9) : Color.white.opacity(0.08))
+                    .frame(width: 20, height: 20)
+                if state == .granted {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.cadMedium(13)).foregroundStyle(Color.textPrimary)
+                Text(detail).font(.cadBody(11)).foregroundStyle(Color.textSecondary)
             }
             Spacer()
             if state == .granted {
-                Text("Granted").font(.system(size: 11, weight: .semibold)).foregroundStyle(.green)
-            } else if state == .denied || state == .restricted {
-                Button("Settings") {
-                    if let url = URL(string: settingsURL) { NSWorkspace.shared.open(url) }
-                }
-                .controlSize(.small)
+                Text("On").font(.cadMedium(11)).foregroundStyle(.green)
             } else {
-                Button("Grant") { grant() }
-                    .controlSize(.small)
+                Button(opensSettings ? "Open Settings" : "Allow", action: action)
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
             }
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.06)))
-    }
-
-    private var glyph: String {
-        switch state {
-        case .granted: return "checkmark.circle.fill"
-        case .denied, .restricted: return "exclamationmark.triangle.fill"
-        default: return "circle"
-        }
-    }
-
-    private var tint: Color {
-        switch state {
-        case .granted: return .green
-        case .denied, .restricted: return .orange
-        default: return Color.mello
-        }
-    }
-}
-
-/// Inline card that explains the "quit & reopen" requirement and offers a
-/// single button to do it cleanly. Onboarding progress is preserved across
-/// the relaunch via `UserPreferences.onboardingStep`.
-private struct RelaunchCard: View {
-    let reason: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.clockwise.circle.fill")
-                    .foregroundStyle(Color.mello)
-                Text("Restart needed?")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            Text(reason)
-                .font(.system(size: 11.5))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button {
-                AppRelocator.relaunchSelf()
-            } label: {
-                Label("Restart Cadence now", systemImage: "power")
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.mello.opacity(0.08))
-        )
+        .padding(11)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.035)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
     }
 }
 
@@ -667,55 +646,6 @@ private struct ExampleBox: View {
     }
 }
 
-private struct PermissionRow: View {
-    let state: PermissionStatus
-    let grantedText: String
-    let deniedText: String
-    let pendingText: String
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: glyph)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(color)
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(color.opacity(0.15)))
-            Text(text)
-                .font(.system(size: 13))
-                .foregroundStyle(.primary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.secondary.opacity(0.06))
-        )
-    }
-
-    private var glyph: String {
-        switch state {
-        case .granted: return "checkmark.circle.fill"
-        case .denied, .restricted: return "exclamationmark.triangle.fill"
-        case .notDetermined, .unknown: return "info.circle.fill"
-        }
-    }
-
-    private var color: Color {
-        switch state {
-        case .granted: return .green
-        case .denied, .restricted: return .orange
-        case .notDetermined, .unknown: return Color.mello
-        }
-    }
-
-    private var text: String {
-        switch state {
-        case .granted: return grantedText
-        case .denied, .restricted: return deniedText
-        case .notDetermined, .unknown: return pendingText
-        }
-    }
-}
 
 private struct StepHint: View {
     let text: String
