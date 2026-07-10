@@ -56,7 +56,6 @@ export function HeroDemo() {
       demo.completeRouting();
       return;
     }
-    tile.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
 
     flyWords(wordEls, tile, {
       onComplete: () => {
@@ -99,7 +98,7 @@ export function HeroDemo() {
       {/* the living waveform ridge — reacts to cursor, and to your voice */}
       <ParticleField active={demo.listening} getLevel={demo.micLevelGetter} />
 
-      <p className="relative inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.2em] text-mello-ink/55">
+      <p className="relative inline-flex items-center gap-2 text-[12px] font-semibold tracking-wide text-mello-ink/55">
         <span className="size-1.5 rounded-full bg-mello pulse-soft" />
         For macOS 14+ · Early access
       </p>
@@ -123,11 +122,11 @@ export function HeroDemo() {
           {demo.toast ? (
             <p className="font-mono text-xs text-mello-deep">{demo.toast}</p>
           ) : status ? (
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-mello-ink/55">
+            <p className="text-[12px] font-semibold tracking-wide text-mello-ink/55">
               {status}
             </p>
           ) : (
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-mello-ink/50">
+            <p className="text-[12px] font-semibold tracking-wide text-mello-ink/50">
               hold <kbd className="rounded border border-mello-ink/20 bg-white/60 px-1">space</kbd> · or click the key ·{" "}
               <button type="button" onClick={demo.runSimulation} className="underline decoration-mello-ink/30 underline-offset-2 hover:text-mello-ink">watch it instead →</button>
             </p>
@@ -158,7 +157,7 @@ export function HeroDemo() {
         <Magnetic>
           <a
             href={DOWNLOAD_URL}
-            className="group inline-flex items-center gap-2 rounded-2xl bg-mello px-6 py-3.5 text-base font-semibold text-mello-ink transition hover:bg-mello-glow"
+            className="group inline-flex items-center gap-2 rounded-xl bg-mello px-6 py-3 text-[15px] font-semibold text-mello-ink transition hover:bg-mello-glow"
           >
             <DownloadIcon /> Download for macOS
             <span className="ml-1 opacity-60 transition group-hover:translate-x-0.5">↗</span>
@@ -167,13 +166,13 @@ export function HeroDemo() {
         <Magnetic>
           <Link
             href="#how"
-            className="inline-flex items-center gap-2 rounded-2xl border border-mello-ink/15 bg-white/50 px-5 py-3.5 text-base text-mello-ink/85 backdrop-blur transition hover:bg-white/80"
+            className="inline-flex items-center gap-2 rounded-xl border border-mello-ink/15 bg-white/50 px-5 py-3 text-[15px] text-mello-ink/85 backdrop-blur transition hover:bg-white/80"
           >
             See how it works
           </Link>
         </Magnetic>
       </div>
-      <p className="relative -mt-4 font-mono text-[11px] uppercase tracking-[0.2em] text-mello-ink/50">
+      <p className="relative -mt-4 text-[12px] font-semibold tracking-wide text-mello-ink/50">
         Free tier · 3 hours / month · No credit card
       </p>
     </section>

@@ -1,9 +1,9 @@
-name = "mellotron-api"
+name = "cadence-api"
 main = "src/index.ts"
 compatibility_date = "2024-06-01"
 
 # Route: api.yourdomain.com → this worker (set in Cloudflare dashboard)
-# routes = [{ pattern = "api.mellotron.me/*", zone_name = "mellotron.me" }]
+# routes = [{ pattern = "api.cadence.me/*", zone_name = "cadence.me" }]
 
 [vars]
 # Non-secret defaults. Override in dashboard if needed.

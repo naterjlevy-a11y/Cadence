@@ -1,5 +1,5 @@
 /**
- * Mellotron API — Cloudflare Worker
+ * Cadence API — Cloudflare Worker
  *
  * Routes:
  *   GET  /health
@@ -41,7 +41,7 @@ export default {
     }
 
     if (url.pathname === "/health") {
-      return cors(json({ ok: true, service: "mellotron-api" }));
+      return cors(json({ ok: true, service: "cadence-api" }));
     }
 
     if (url.pathname === "/v1/transcribe" && request.method === "POST") {
@@ -276,7 +276,7 @@ async function handleCheckout(request: Request, env: Env): Promise<Response> {
   }
 
   const profile = await getProfileFull(env, user.id);
-  const returnURL = env.CHECKOUT_SUCCESS_URL ?? "https://mellotron.app/welcome?checkout=complete";
+  const returnURL = env.CHECKOUT_SUCCESS_URL ?? "https://cadence.app/welcome?checkout=complete";
 
   const form: Record<string, string> = {
     mode: "subscription",
@@ -292,7 +292,7 @@ async function handleCheckout(request: Request, env: Env): Promise<Response> {
     form.ui_mode = "embedded_page";
     form.return_url = returnURL;
   } else {
-    const cancelURL = env.CHECKOUT_CANCEL_URL ?? "https://mellotron.app/pricing";
+    const cancelURL = env.CHECKOUT_CANCEL_URL ?? "https://cadence.app/pricing";
     form.success_url = returnURL;
     form.cancel_url = cancelURL;
   }
@@ -343,7 +343,7 @@ function handleEmbeddedCheckoutPage(request: Request, env: Env): Response {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mellotron Pro</title>
+  <title>Cadence Pro</title>
   <script src="https://js.stripe.com/v3/"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -357,7 +357,7 @@ function handleEmbeddedCheckoutPage(request: Request, env: Env): Response {
 </head>
 <body>
   <div class="header">
-    <h1>Mellotron Pro</h1>
+    <h1>Cadence Pro</h1>
     <p>Unlimited dictation · $5/month · Cancel anytime</p>
   </div>
   <div id="error"></div>
@@ -391,7 +391,7 @@ async function handlePortal(request: Request, env: Env): Promise<Response> {
   if (!profile.stripe_customer_id) {
     return json({ error: "no_subscription" }, 404);
   }
-  const returnURL = env.CHECKOUT_CANCEL_URL ?? "https://mellotron.app/account";
+  const returnURL = env.CHECKOUT_CANCEL_URL ?? "https://cadence.app/account";
   const res = await stripeForm(env, "/billing_portal/sessions", {
     customer: profile.stripe_customer_id,
     return_url: returnURL,

@@ -79,7 +79,7 @@ export function AliasMarquee() {
 
   return (
     <section className="relative border-y border-white/[0.06] bg-white/[0.015] py-10">
-      <p className="mx-auto mb-6 max-w-6xl px-6 font-mono text-[11px] uppercase tracking-[0.2em] text-white/50">
+      <p className="mx-auto mb-6 max-w-6xl px-6 text-[12px] font-semibold tracking-wide text-white/50">
         Fuzzy routing · longest-match alias wins
       </p>
 

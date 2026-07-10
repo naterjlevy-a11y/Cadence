@@ -1,4 +1,4 @@
-# Build, sign, notarize, and upload Mellotron DMG on version tags.
+# Build, sign, notarize, and upload Cadence DMG on version tags.
 #
 # Required GitHub repository secrets:
 #   APPLE_CERTIFICATE_P12_BASE64   — Developer ID Application cert (.p12), base64
@@ -44,8 +44,8 @@ jobs:
 
       - name: Build Release
         run: |
-          xcodebuild -project Mellotron.xcodeproj \
-            -scheme Mellotron \
+          xcodebuild -project Cadence.xcodeproj \
+            -scheme Cadence \
             -configuration Release \
             -destination 'platform=macOS' \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
@@ -54,8 +54,8 @@ jobs:
 
       - name: Create DMG
         run: |
-          APP=$(find ~/Library/Developer/Xcode/DerivedData -name 'Mellotron.app' -path '*/Release/*' | head -1)
-          hdiutil create -volname Mellotron -srcfolder "$APP" -ov -format UDZO Mellotron.dmg
+          APP=$(find ~/Library/Developer/Xcode/DerivedData -name 'Cadence.app' -path '*/Release/*' | head -1)
+          hdiutil create -volname Cadence -srcfolder "$APP" -ov -format UDZO Cadence.dmg
 
       - name: Notarize
         env:
@@ -63,15 +63,15 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          xcrun notarytool submit Mellotron.dmg \
+          xcrun notarytool submit Cadence.dmg \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
-          xcrun stapler staple Mellotron.dmg
+          xcrun stapler staple Cadence.dmg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mellotron-dmg
-          path: Mellotron.dmg
+          name: Cadence-dmg
+          path: Cadence.dmg

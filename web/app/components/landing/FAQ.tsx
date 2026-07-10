@@ -27,7 +27,7 @@ export function FAQ() {
   return (
     <section id="faq" className="mx-auto max-w-4xl px-6 py-28">
       <SectionEyebrow>Frequently asked</SectionEyebrow>
-      <h2 className="mt-4 font-display text-5xl leading-tight tracking-tightest md:text-6xl">
+      <h2 className="mt-4 font-display text-[2.5rem] leading-[1.08] tracking-tightest md:text-[3.2rem]">
         Questions, <span className="italic-display text-mello">answered.</span>
       </h2>
       <div className="mt-12 divide-y divide-white/[0.08] border-y border-white/[0.08]">

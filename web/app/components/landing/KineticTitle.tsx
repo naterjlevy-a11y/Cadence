@@ -8,7 +8,7 @@ import { getSprings, reducedMotion, useAnimeScope } from "./motion";
 // override flip rewrites the italic span) — so React must never reconcile
 // it. Constant dangerouslySetInnerHTML keeps React's hands off.
 const TITLE_HTML =
-  'Hold a key.<br/>Talk to <span class="kt-italic inline-block italic-display text-mello">anything.</span>';
+  'Hold a key.<br/>Talk to <span class="kt-italic inline-block font-bold text-mello">anything.</span>';
 
 /**
  * The hero headline. Chars spring in staggered with a slight scatter of
@@ -135,7 +135,7 @@ export function KineticTitle({ overrideWord }: { overrideWord: string | null }) 
   return (
     <div ref={rootRef as React.Ref<HTMLDivElement>}>
       <h1
-        className="text-center font-display text-[clamp(3.25rem,9vw,8rem)] leading-[0.98] tracking-tightest"
+        className="text-center text-[clamp(2.5rem,6vw,5.2rem)] font-semibold leading-[1.03] tracking-[-0.035em]"
         // Constant string — React renders once and never reconciles inside.
         dangerouslySetInnerHTML={{ __html: TITLE_HTML }}
       />

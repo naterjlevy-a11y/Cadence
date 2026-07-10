@@ -1,7 +1,7 @@
 # Supabase local dev (optional). Install: brew install supabase/tap/supabase
 # Run: supabase link --project-ref YOUR_REF && supabase db push
 
-project_id = "mellotron"
+project_id = "cadence"
 
 [api]
 enabled = true

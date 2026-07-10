@@ -11,7 +11,7 @@ export function Pricing() {
         </p>
         <a
           href={DOWNLOAD_URL}
-          className="group inline-flex shrink-0 items-center gap-2 rounded-2xl bg-mello-coral px-6 py-3.5 text-base font-semibold text-mello-ink transition hover:brightness-110"
+          className="group inline-flex shrink-0 items-center gap-2 rounded-xl bg-mello-coral px-6 py-3 text-[15px] font-semibold text-mello-ink transition hover:brightness-110"
         >
           <DownloadIcon /> Download
           <span className="ml-1 opacity-60 transition group-hover:translate-x-0.5">↗</span>

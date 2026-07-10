@@ -58,7 +58,7 @@ export function MarqueeBand({
         {Array.from({ length: 6 }).map((_, i) => (
           <span
             key={i}
-            className="text-outline px-2 font-display text-[clamp(3rem,7vw,6rem)] uppercase leading-none tracking-tightest"
+            className="text-outline px-2 font-display text-[clamp(2.6rem,6vw,5rem)] uppercase leading-none tracking-tightest"
           >
             {chunk}
           </span>

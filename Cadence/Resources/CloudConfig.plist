@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SupabaseURL</key>
+	<string>https://bitjobmiiqmgkgrsdxfw.supabase.co</string>
+	<key>SupabaseAnonKey</key>
+	<string>sb_publishable_0HxtrV77XYoXzeIqRb1Cqg_dDWtgGnL</string>
+	<key>APIBaseURL</key>
+	<string>https://mellotron-api.mellotron.workers.dev</string>
+	<key>AuthRedirectURL</key>
+	<string>cadence://auth/callback</string>
+	<key>StripePublishableKey</key>
+	<string>pk_test_51TfwDAQGNjQd4Un0vRtu0eeS7uPU1uwcE8kSVSB4iOM6ywwbU5mPdBALsjLsRXCnD3h5pUGGQMDB0wqn4KCn6ugf00UOPjzDYE</string>
+	<key>SentryDSN</key>
+	<string>https://5a8a03a0f3e50dac5947cc705c6894f7@o4511338715480064.ingest.us.sentry.io/4511493438963712</string>
+</dict>
+</plist>

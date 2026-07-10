@@ -1,6 +1,6 @@
-# Mellotron
+# Cadence
 
-A native macOS push-to-talk dictation router. Hold a key, say where your words should go ("Hey Claude…", "Hey Google Docs…"), speak, release. Mellotron opens or focuses the destination, strips the routing phrase, cleans up your speech, and pastes the result.
+A native macOS push-to-talk dictation router. Hold a key, say where your words should go ("Hey Claude…", "Hey Google Docs…"), speak, release. Cadence opens or focuses the destination, strips the routing phrase, cleans up your speech, and pastes the result.
 
 > Hold one key. Say where it goes. Speak your thought. Release. Done.
 
@@ -10,25 +10,25 @@ Requirements:
 
 - macOS 14 or later
 - Xcode 16 or later (project was generated with Xcode 26.5)
-- [`xcodegen`](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) only if you want to regenerate `Mellotron.xcodeproj` from `project.yml`
+- [`xcodegen`](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) only if you want to regenerate `Cadence.xcodeproj` from `project.yml`
 
 Build and run:
 
 ```bash
-cd ~/Projects/Mellotron
+cd ~/Projects/Cadence
 xcodegen generate            # only needed if project.yml changes
-open Mellotron.xcodeproj
+open Cadence.xcodeproj
 # or, from CLI:
-xcodebuild -project Mellotron.xcodeproj \
-           -scheme Mellotron \
+xcodebuild -project Cadence.xcodeproj \
+           -scheme Cadence \
            -configuration Debug \
            build
-open build/DerivedData/Build/Products/Debug/Mellotron.app
+open build/DerivedData/Build/Products/Debug/Cadence.app
 ```
 
 ### Code signing (important for daily dev)
 
-In Xcode → **Settings → Accounts**, add your Apple ID, then on the Mellotron target pick your **Personal Team**. Do **not** force ad-hoc signing (`CODE_SIGN_IDENTITY = "-"`); unstable signatures make macOS re-prompt for Keychain and silently break Accessibility / Input Monitoring.
+In Xcode → **Settings → Accounts**, add your Apple ID, then on the Cadence target pick your **Personal Team**. Do **not** force ad-hoc signing (`CODE_SIGN_IDENTITY = "-"`); unstable signatures make macOS re-prompt for Keychain and silently break Accessibility / Input Monitoring.
 
 After the first signed build, run **Permission Repair** once from the menu bar if any toggle looks stuck.
 
@@ -36,7 +36,7 @@ The first launch shows a 6-step onboarding flow (welcome + optional sign-in, how
 
 ## Permissions
 
-Mellotron requests:
+Cadence requests:
 
 - **Microphone** — captures audio only while you hold the push-to-talk key.
 - **Speech Recognition** — transcribes audio on-device using Apple Speech.
@@ -49,7 +49,7 @@ The first run guides the user through each one on a single permissions screen; s
 ## Architecture
 
 ```
-App entry          MellotronApp                       (App/MellotronApp.swift)
+App entry          CadenceApp                       (App/CadenceApp.swift)
                        │
 Menu bar UI        MenuBarController                  (UI/MenuBar)
 Onboarding         OnboardingFlowView                 (UI/Onboarding)
@@ -77,7 +77,7 @@ Coordinator        DictationCoordinator (state machine)
 
 | File | Purpose |
 | --- | --- |
-| `App/MellotronApp.swift` | NSApplicationDelegate, wires hotkey → coordinator and owns the menu bar. |
+| `App/CadenceApp.swift` | NSApplicationDelegate, wires hotkey → coordinator and owns the menu bar. |
 | `Managers/PermissionsManager.swift` | Tracks mic / speech / accessibility / input monitoring states and exposes them to SwiftUI. |
 | `Managers/HotkeyManager.swift` | Global `CGEvent` tap that detects the configured PTT key (Right Ctrl/Opt/Cmd/Shift, Caps Lock, Fn/Globe, F-keys, custom). |
 | `Managers/AudioRecorder.swift` | `AVAudioEngine` capture → 16 kHz mono Int16 WAV file with a live level meter. |
@@ -110,19 +110,19 @@ Custom aliases per destination, plus enabling/disabling and per-destination pref
 
 ```
 You say:    "Hey Claude, help me write a product spec."
-Mellotron:  Focuses or opens Claude
+Cadence:  Focuses or opens Claude
             Pastes: "Help me write a product spec."
 
 You say:    "Open Google Docs and write a paragraph about renewable energy."
-Mellotron:  Opens Google Docs in your preferred browser
+Cadence:  Opens Google Docs in your preferred browser
             Pastes: "Write a paragraph about renewable energy."
 
 You say:    "Make this sound more professional."
-Mellotron:  Stays in the current app
+Cadence:  Stays in the current app
             Pastes: "Make this sound more professional."
 
 You say:    "Hey, Claude told me this might work."
-Mellotron:  No leading routing phrase detected — pastes verbatim into current app.
+Cadence:  No leading routing phrase detected — pastes verbatim into current app.
 ```
 
 ## Privacy posture

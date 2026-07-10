@@ -93,25 +93,23 @@ export function PillPortal() {
       <div className="sticky top-0 h-dvh overflow-hidden">
         {/* Layer A — the light world behind the hole */}
         <div className="sky-world absolute inset-0">
-          <p className="portal-line absolute top-1/2 -mt-[0.5em] whitespace-nowrap font-display text-[clamp(7rem,17vw,19rem)] italic-display leading-none tracking-tightest text-mello-ink">
+          <p className="portal-line absolute top-1/2 -mt-[0.5em] whitespace-nowrap font-display text-[clamp(5.5rem,13vw,14rem)] italic-display leading-none tracking-tightest text-mello-ink">
             say it anywhere.
           </p>
         </div>
 
         {/* intro text — big, fades as you start scrolling */}
         <div className="portal-intro absolute inset-x-0 top-[16dvh] z-20 flex flex-col items-center gap-4 px-6 text-center">
-          <h1 className="font-display text-[clamp(3rem,7.5vw,6.5rem)] leading-[0.98] tracking-tightest text-white">
-            Talk to <span className="italic-display text-mello">anything.</span>
+          <h1 className="text-[clamp(2.1rem,4.6vw,3.9rem)] font-semibold leading-[1.05] tracking-[-0.035em] text-white/95">
+            Hold a key. Talk to <span className="font-semibold text-mello">anything</span>.
           </h1>
-          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/55">
-            Cadence · push-to-talk dictation for your Mac
-          </p>
+          <p className="mt-1 text-[14px] font-normal text-white/45">Push-to-talk dictation for your Mac — say where your words go.</p>
         </div>
 
         {/* the replica recording pill you fly through — rounded-full stays a
             perfect stadium at every size (never animate borderRadius) */}
         <div
-          className="portal-frame pointer-events-none absolute left-1/2 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-4 rounded-full border border-white/10 bg-mello-surface px-4 shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+          className="portal-frame pointer-events-none absolute left-1/2 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-4 rounded-full border-2 border-white/25 bg-mello-surface px-4 shadow-[0_0_0_1px_rgba(124,156,255,0.18),0_24px_70px_rgba(0,0,0,0.6)]"
           style={{ width: 360, height: 138 }}
         >
           {/* status dot */}
@@ -143,7 +141,7 @@ export function PillPortal() {
         </div>
 
         {/* scroll hint */}
-        <p className="portal-hint absolute bottom-10 left-1/2 z-20 -translate-x-1/2 font-mono text-[11px] uppercase tracking-[0.2em] text-white/45">
+        <p className="portal-hint absolute bottom-10 left-1/2 z-20 -translate-x-1/2 text-[12px] font-semibold tracking-wide text-white/45">
           scroll
         </p>
 

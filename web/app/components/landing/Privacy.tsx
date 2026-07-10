@@ -68,7 +68,7 @@ export function Privacy() {
   return (
     <section ref={rootRef as React.Ref<HTMLElement>} className="mx-auto max-w-6xl px-6 py-32">
       <SectionEyebrow>Privacy</SectionEyebrow>
-      <h2 className="mt-4 max-w-3xl font-display text-5xl leading-tight tracking-tightest md:text-6xl">
+      <h2 className="mt-4 max-w-3xl font-display text-[2.5rem] leading-[1.08] tracking-tightest md:text-[3.2rem]">
         Your audio has a lifespan of{" "}
         <span className="italic-display text-mello">one held key.</span>
       </h2>
@@ -93,7 +93,7 @@ export function Privacy() {
         <div className="mt-8 grid grid-cols-2 gap-6 md:grid-cols-4">
           {STATIONS.map((s, i) => (
             <div key={i} className="pv-station opacity-30">
-              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-mello">
+              <p className="text-[12px] font-semibold tracking-wide text-mello">
                 {String(i + 1).padStart(2, "0")}
               </p>
               <h3 className="mt-1 font-display text-xl tracking-tightest">{s.label}</h3>

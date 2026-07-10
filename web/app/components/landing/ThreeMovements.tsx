@@ -1,7 +1,6 @@
 "use client";
 
-import { createTimeline, onScroll, stagger, svg } from "animejs";
-import { reducedMotion, useAnimeScope } from "./motion";
+import { useAnimeScope } from "./motion";
 import { SectionEyebrow } from "./ui";
 
 const PHRASE = ["hey", "claude,", "summarize", "the", "standup"];
@@ -14,76 +13,18 @@ const PREFIX_LEN = 2; // "hey claude," is the routing phrase
  * the section unpins via CSS and reads as three static blocks + end-state.
  */
 export function ThreeMovements() {
-  const { rootRef } = useAnimeScope((scope) => {
-    if (reducedMotion(scope)) return;
-    const root = scope.root as HTMLElement;
-    const section = root;
-
-    const q = (sel: string) => root.querySelector<HTMLElement>(sel);
-    const qa = (sel: string) => Array.from(root.querySelectorAll<HTMLElement>(sel));
-
-    const keyFace = q(".tm-key-face");
-    const stamp = q(".tm-stamp");
-    const bars = qa(".tm-bar");
-    const words = qa(".tm-word");
-    const prefix = qa(".tm-word-prefix");
-    const typed = q(".tm-typed");
-    const caption3 = q(".tm-caption-3");
-    const checkPath = q(".tm-check-path");
-    if (!keyFace || !stamp || !typed || !caption3 || !checkPath) return;
-
-    const drawable = svg.createDrawable(checkPath as unknown as SVGPathElement);
-
-    const tl = createTimeline({
-      defaults: { ease: "inOut(2)", duration: 400 },
-      autoplay: onScroll({
-        target: section,
-        enter: "top top",
-        leave: "bottom bottom",
-        sync: true,
-      }),
-    });
-
-    tl
-      // ── 01 Hold ──
-      .add(".tm-block-1", { opacity: [0.25, 1] }, 0)
-      .add(keyFace, { translateY: [0, 10] }, 50)
-      .add(stamp, { opacity: [0, 1], translateY: [8, 0] }, 350)
-      // ── 02 Speak ──
-      .add(".tm-block-1", { opacity: 0.25 }, 900)
-      .add(".tm-block-2", { opacity: [0.25, 1] }, 900)
-      .add(bars, { scaleY: [0.12, 1], delay: stagger(40) }, 950)
-      .add(words, { opacity: [0, 1], translateY: [8, 0], delay: stagger(70) }, 1000)
-      .add(prefix, { color: "#7c9cff" }, 1300)
-      // ── 03 Release ──
-      .add(".tm-block-2", { opacity: 0.25 }, 1900)
-      .add(".tm-block-3", { opacity: [0.25, 1] }, 1900)
-      .add(
-        words,
-        {
-          translateX: 150,
-          translateY: -70,
-          scale: 0.35,
-          opacity: 0,
-          delay: stagger(26),
-        },
-        1980
-      )
-      .add(typed, { opacity: [0, 1] }, 2200)
-      .add(drawable, { draw: "0 1", duration: 350, ease: "out(2)" }, 2300)
-      .add(caption3, { opacity: [0, 1], translateY: [6, 0] }, 2450);
-  });
-
+  // Static section by design — no pin, no scrub (scrubbing felt bad).
+  const { rootRef } = useAnimeScope(() => {});
   return (
     <section
       id="how"
       ref={rootRef as React.Ref<HTMLElement>}
-      className="tm-section relative h-[300vh]"
+      className="tm-section relative py-8"
     >
-      <div className="tm-sticky sticky top-0 flex h-dvh flex-col justify-center overflow-hidden">
+      <div className="tm-sticky flex flex-col justify-center overflow-hidden py-20">
         <div className="mx-auto w-full max-w-6xl px-6">
           <SectionEyebrow>How it works</SectionEyebrow>
-          <h2 className="mt-4 max-w-3xl font-display text-5xl leading-tight tracking-tightest md:text-6xl">
+          <h2 className="mt-4 max-w-3xl font-display text-[2.5rem] leading-[1.08] tracking-tightest md:text-[3.2rem]">
             Three movements.{" "}
             <span className="italic-display text-mello">Under a second.</span>
           </h2>
@@ -92,21 +33,21 @@ export function ThreeMovements() {
             {/* Numbered narration */}
             <div className="flex flex-row gap-8 md:flex-col">
               <div className="tm-block-1">
-                <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-mello">01</span>
+                <span className="text-[12px] font-semibold tracking-wide text-mello">01</span>
                 <h3 className="mt-1 font-display text-3xl tracking-tightest">Hold.</h3>
                 <p className="mt-1.5 max-w-xs text-sm leading-relaxed text-white/60">
                   Press your push-to-talk key.
                 </p>
               </div>
-              <div className="tm-block-2 opacity-25">
-                <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-mello">02</span>
+              <div className="tm-block-2">
+                <span className="text-[12px] font-semibold tracking-wide text-mello">02</span>
                 <h3 className="mt-1 font-display text-3xl tracking-tightest">Speak.</h3>
                 <p className="mt-1.5 max-w-xs text-sm leading-relaxed text-white/60">
                   &ldquo;Hey Claude, &hellip;&rdquo; — the routing is automatic.
                 </p>
               </div>
-              <div className="tm-block-3 opacity-25">
-                <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-mello">03</span>
+              <div className="tm-block-3">
+                <span className="text-[12px] font-semibold tracking-wide text-mello">03</span>
                 <h3 className="mt-1 font-display text-3xl tracking-tightest">Release.</h3>
                 <p className="mt-1.5 max-w-xs text-sm leading-relaxed text-white/60">
                   Your words land — cleaned, pasted.
@@ -125,7 +66,7 @@ export function ThreeMovements() {
                       ⌥
                     </span>
                   </div>
-                  <span className="tm-stamp font-mono text-[10px] uppercase tracking-[0.2em] text-white/45 opacity-0">
+                  <span className="tm-stamp text-[11px] font-medium tracking-wide text-white/45 opacity-0">
                     min 200ms · shorter holds are dropped
                   </span>
                 </div>
@@ -158,7 +99,7 @@ export function ThreeMovements() {
                   <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-2.5">
                     <span className="size-2 rounded-full bg-white/15" />
                     <span className="size-2 rounded-full bg-white/15" />
-                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">
+                    <span className="text-[11px] font-medium tracking-wide text-white/45">
                       claude.ai/new
                     </span>
                     <svg className="ml-auto" width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -172,11 +113,11 @@ export function ThreeMovements() {
                       />
                     </svg>
                   </div>
-                  <p className="tm-typed px-4 py-3 font-mono text-xs leading-relaxed text-white/80 opacity-0">
+                  <p className="tm-typed px-4 py-3 font-mono text-xs leading-relaxed text-white/80">
                     Summarize the standup.
                   </p>
                 </div>
-                <p className="tm-caption-3 -mt-4 ml-auto font-mono text-[10px] uppercase tracking-[0.18em] text-white/40 opacity-0">
+                <p className="tm-caption-3 -mt-4 ml-auto text-[11px] font-medium tracking-wide text-white/40">
                   pasted · clipboard restored ~600ms later
                 </p>
               </div>

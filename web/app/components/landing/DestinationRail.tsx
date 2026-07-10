@@ -29,7 +29,7 @@ export function DestinationRail({
             <div
               key={d.id}
               data-dest-id={d.id}
-              className={`dest-tile relative flex w-[9.5rem] shrink-0 flex-col gap-1 rounded-2xl border p-3.5 transition-colors duration-200 ${
+              className={`dest-tile relative flex h-[4.4rem] w-[9.5rem] shrink-0 flex-col gap-1 overflow-hidden rounded-2xl border p-3.5 transition-colors duration-200 ${
                 lit
                   ? "tile-lit border-mello-deep/70 bg-mello/[0.14]"
                   : "border-mello-ink/10 bg-white/60"
@@ -52,7 +52,7 @@ export function DestinationRail({
                   {d.hint}
                 </span>
               ) : (
-                <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-mello-ink/45">
+                <span className="text-[12px] font-semibold tracking-wide text-mello-ink/45">
                   {d.hint}
                 </span>
               )}

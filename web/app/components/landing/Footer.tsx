@@ -40,7 +40,7 @@ export function Footer() {
           <Link href={DOWNLOAD_URL} className="hover:text-white">Download</Link>
         </div>
       </div>
-      <div className="mx-auto max-w-6xl border-t border-white/5 px-6 py-6 font-mono text-[11px] uppercase tracking-[0.2em] text-white/40">
+      <div className="mx-auto max-w-6xl border-t border-white/5 px-6 py-6 text-[12px] font-semibold tracking-wide text-white/40">
         © {new Date().getFullYear()} Cadence · Made in Vancouver, for macOS 14+
       </div>
     </footer>

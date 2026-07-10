@@ -81,7 +81,7 @@ export function Preloader() {
             />
           ))}
         </div>
-        <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/55">
+        <div className="text-[12px] font-semibold tracking-wide text-white/55">
           <span className="pre-count text-mello">000</span> · CADENCE
         </div>
       </div>

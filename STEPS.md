@@ -1,4 +1,4 @@
-# Mellotron — Pre-launch Priority 1 (step by step)
+# Cadence — Pre-launch Priority 1 (step by step)
 
 Five things, in order. Each one names exactly what's in the repo, what you click in a browser, and what to verify before moving on.
 
@@ -8,7 +8,7 @@ Five things, in order. Each one names exactly what's in the repo, what you click
 
 **What's already done in the repo**
 - `Sparkle` SPM dependency added (`project.yml`).
-- `Mellotron/Services/UpdaterService.swift` — wraps `SPUStandardUpdaterController` with a daily background check.
+- `Cadence/Services/UpdaterService.swift` — wraps `SPUStandardUpdaterController` with a daily background check.
 - "Check for Updates…" appears in the hidden app menu **and** in the menu-bar popover.
 - `Info.plist` keys via `project.yml`: `SUFeedURL`, `SUEnableAutomaticChecks`, `SUEnableInstallerLauncherService`, `SUPublicEDKey` (placeholder).
 - `web/public/appcast.xml` — template appcast hosted next to the landing page.
@@ -40,21 +40,21 @@ SUPublicEDKey: "REPLACE_WITH_ED25519_PUBLIC_KEY"
 Replace with your public key. Then:
 
 ```bash
-cd /Users/natelevy/Projects/Mellotron
+cd /Users/natelevy/Projects/Cadence
 xcodegen generate
 ```
 
 ### 1c. (Later, when you ship) Sign each DMG
 
 ```bash
-~/Downloads/Sparkle-2.9.2/bin/sign_update Mellotron-0.1.0.dmg
+~/Downloads/Sparkle-2.9.2/bin/sign_update Cadence-0.1.0.dmg
 ```
 
 This prints a `sparkle:edSignature="…"` line and a `length=…`. Paste both into a new `<item>` in `web/public/appcast.xml`, push the web folder, and your existing users will see an update prompt within 24 hours.
 
 ### 1d. Test "Check for Updates" works
 
-Open Mellotron → menu-bar icon → **Check for updates…**
+Open Cadence → menu-bar icon → **Check for updates…**
 
 It'll fail loudly because the appcast URL isn't live yet — that's fine. The button works.
 
@@ -64,7 +64,7 @@ It'll fail loudly because the appcast URL isn't live yet — that's fine. The bu
 
 **What's already done**
 - `Sentry` SPM dependency added.
-- `Mellotron/Services/CrashReporter.swift` — calls `SentrySDK.start` on launch when a DSN is set. Tags every event with `release: mellotron@VERSION+BUILD`.
+- `Cadence/Services/CrashReporter.swift` — calls `SentrySDK.start` on launch when a DSN is set. Tags every event with `release: cadence@VERSION+BUILD`.
 - `CloudConfig.plist` has a `SentryDSN` slot (currently empty).
 
 **What you need to do**
@@ -75,20 +75,20 @@ Go to [sentry.io/signup](https://sentry.io/signup). Pick **macOS / Cocoa**. **Gi
 
 ### 2b. Create a project
 
-Sentry → **Projects → Create Project** → platform **macOS / Cocoa** → name `mellotron`.
+Sentry → **Projects → Create Project** → platform **macOS / Cocoa** → name `cadence`.
 
 It'll show you a DSN that looks like `https://abc123@o0.ingest.sentry.io/123456`. Copy it.
 
 ### 2c. Paste DSN into config
 
-Open `/Users/natelevy/Projects/Mellotron/Mellotron/Resources/CloudConfig.plist`:
+Open `/Users/natelevy/Projects/Cadence/Cadence/Resources/CloudConfig.plist`:
 
 ```xml
 <key>SentryDSN</key>
 <string>PASTE_DSN_HERE</string>
 ```
 
-Save. Relaunch Mellotron. The Console log will print `CrashReporter: Sentry active`.
+Save. Relaunch Cadence. The Console log will print `CrashReporter: Sentry active`.
 
 ### 2d. Test it
 
@@ -108,7 +108,7 @@ In Sentry, click the project's **Issues → Send test event** menu (top-right of
 ### 3a. Local preview
 
 ```bash
-cd /Users/natelevy/Projects/Mellotron/web
+cd /Users/natelevy/Projects/Cadence/web
 npm install
 npm run dev
 open http://localhost:3000
@@ -123,21 +123,21 @@ Edit `web/app/page.tsx` to:
 GitHub Student Pack gets you Vercel Pro free — claim at [education.github.com/pack](https://education.github.com/pack) → Vercel.
 
 ```bash
-cd /Users/natelevy/Projects/Mellotron/web
+cd /Users/natelevy/Projects/Cadence/web
 npx vercel              # first time: log in, link the project
 npx vercel --prod
 ```
 
-### 3c. Custom domain (only if you grabbed `mellotron.me`)
+### 3c. Custom domain (only if you grabbed `cadence.me`)
 
 If you claimed a `.me` domain via Namecheap (Student Pack):
 
-1. Namecheap dashboard → Domain List → `mellotron.me` → **Manage** → **Advanced DNS**
+1. Namecheap dashboard → Domain List → `cadence.me` → **Manage** → **Advanced DNS**
 2. Add CNAME: `Host: @`  `Value: cname.vercel-dns.com`
-3. Vercel → project → Settings → Domains → Add `mellotron.me` and `www.mellotron.me`
+3. Vercel → project → Settings → Domains → Add `cadence.me` and `www.cadence.me`
 4. Vercel auto-issues a TLS cert in ~60 seconds
 
-The `api.mellotron.me` for the Cloudflare Worker is configured separately (Cloudflare → Workers → mellotron-api → Triggers → Custom Domains). For now leave the app on the `workers.dev` URL.
+The `api.cadence.me` for the Cloudflare Worker is configured separately (Cloudflare → Workers → cadence-api → Triggers → Custom Domains). For now leave the app on the `workers.dev` URL.
 
 ---
 
@@ -146,22 +146,22 @@ The `api.mellotron.me` for the Cloudflare Worker is configured separately (Cloud
 **What's already done**
 - Menu bar popover: **Send feedback…** opens a mailto with version + macOS pre-filled.
 - Settings → General → **Support & updates** card has both Send feedback and Check now.
-- Onboarding's final screen mentions `support@mellotron.me`.
+- Onboarding's final screen mentions `support@cadence.me`.
 
 **What you need to do — only once you own a domain**
 
 ### 4a. Email forwarding (Namecheap)
 
-Namecheap → Domain List → `mellotron.me` → **Manage** → **Domain** tab → scroll to **Redirect Email** → add:
+Namecheap → Domain List → `cadence.me` → **Manage** → **Domain** tab → scroll to **Redirect Email** → add:
 
-- `support@mellotron.me` → forwards to your inbox
+- `support@cadence.me` → forwards to your inbox
 
 Cost: free. Propagation: ~10 minutes.
 
-Until your domain is live, replace `support@mellotron.me` in two places with whatever email you want:
+Until your domain is live, replace `support@cadence.me` in two places with whatever email you want:
 
-1. `Mellotron/UI/MenuBar/MenuBarController.swift` — `sendFeedback()` function
-2. `Mellotron/UI/Settings/SettingsWindowController.swift` — "Support & updates" card
+1. `Cadence/UI/MenuBar/MenuBarController.swift` — `sendFeedback()` function
+2. `Cadence/UI/Settings/SettingsWindowController.swift` — "Support & updates" card
 
 ---
 
@@ -181,19 +181,19 @@ Until your domain is live, replace `support@mellotron.me` in two places with wha
    - Did "routing" make sense without explanation?
    - Did anything take more than 2 reads?
 
-4. For each confusion point, tighten the `subtitle:` string in `Mellotron/UI/Onboarding/OnboardingFlowView.swift`.
+4. For each confusion point, tighten the `subtitle:` string in `Cadence/UI/Onboarding/OnboardingFlowView.swift`.
 
-5. Have a friend who hasn't seen Mellotron sit at your Mac with a fresh user account or VM and go through it. Watch silently. Note every pause.
+5. Have a friend who hasn't seen Cadence sit at your Mac with a fresh user account or VM and go through it. Watch silently. Note every pause.
 
 ---
 
 ## Email sign-in (magic link) — Supabase redirect URLs
 
-The email link opens in your **browser** first, then hands off to the Mellotron app. Both must be configured.
+The email link opens in your **browser** first, then hands off to the Cadence app. Both must be configured.
 
 ### 1. Supabase dashboard (one-time, ~2 min)
 
-1. Open [Supabase](https://supabase.com/dashboard) → your Mellotron project.
+1. Open [Supabase](https://supabase.com/dashboard) → your Cadence project.
 2. **Authentication** → **URL Configuration**.
 3. Set **Site URL** to your local dev server (while developing):
    - `http://localhost:3000`  
@@ -201,20 +201,20 @@ The email link opens in your **browser** first, then hands off to the Mellotron 
 4. Under **Redirect URLs**, add **all** of these (one per line):
    - `http://localhost:3000/auth/callback`
    - `http://localhost:3001/auth/callback`
-   - `mellotron://auth/callback`
+   - `cadence://auth/callback`
    - `https://web-six-xi-79.vercel.app/auth/callback` (or your production domain when you have one)
 5. Click **Save**.
 
-### 2. Mellotron app config
+### 2. Cadence app config
 
-In `Mellotron/Resources/CloudConfig.plist`, `AuthRedirectURL` must match the port your Next dev server uses:
+In `Cadence/Resources/CloudConfig.plist`, `AuthRedirectURL` must match the port your Next dev server uses:
 
 ```xml
 <key>AuthRedirectURL</key>
 <string>http://localhost:3000/auth/callback</string>
 ```
 
-After editing, rebuild/reinstall the app (or copy the plist into `/Applications/Mellotron.app/Contents/Resources/`).
+After editing, rebuild/reinstall the app (or copy the plist into `/Applications/Cadence.app/Contents/Resources/`).
 
 ### 3. Local dev server must be running
 
@@ -222,14 +222,14 @@ After editing, rebuild/reinstall the app (or copy the plist into `/Applications/
 cd web && npm run dev
 ```
 
-Leave it running while you test sign-in. The magic link lands on `/auth/callback`, which forwards tokens to `mellotron://` and opens Mellotron.
+Leave it running while you test sign-in. The magic link lands on `/auth/callback`, which forwards tokens to `cadence://` and opens Cadence.
 
 ### 4. Test flow
 
-1. Mellotron running (menu bar icon visible).
+1. Cadence running (menu bar icon visible).
 2. Sign in → enter email → **Send sign-in link**.
 3. Open the email → click the link.
-4. Browser shows “Opening Mellotron…” → app activates → Settings shows your email (not “Guest session”).
+4. Browser shows “Opening Cadence…” → app activates → Settings shows your email (not “Guest session”).
 
 ---
 
@@ -237,15 +237,15 @@ Leave it running while you test sign-in. The magic link lands on `/auth/callback
 
 | Feature | Path |
 |---------|------|
-| Sparkle wiring | `Mellotron/Services/UpdaterService.swift` |
-| Sentry wiring | `Mellotron/Services/CrashReporter.swift` |
+| Sparkle wiring | `Cadence/Services/UpdaterService.swift` |
+| Sentry wiring | `Cadence/Services/CrashReporter.swift` |
 | Sparkle Info.plist keys | `project.yml` (regenerate after edits) |
-| Cloud config (DSN, Supabase URL, API URL, auth redirect) | `Mellotron/Resources/CloudConfig.plist` |
+| Cloud config (DSN, Supabase URL, API URL, auth redirect) | `Cadence/Resources/CloudConfig.plist` |
 | Email sign-in web bridge | `web/app/auth/callback/page.tsx` |
 | Appcast template | `web/public/appcast.xml` |
 | Landing page | `web/app/page.tsx` |
 | Support email + Check Updates UI | `MenuBarController.swift`, `SettingsWindowController.swift` |
-| Onboarding | `Mellotron/UI/Onboarding/OnboardingFlowView.swift` |
+| Onboarding | `Cadence/UI/Onboarding/OnboardingFlowView.swift` |
 
 ---
 

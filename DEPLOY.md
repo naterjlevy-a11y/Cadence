@@ -1,6 +1,6 @@
-# Mellotron — production setup
+# Cadence — production setup
 
-Ship Mellotron **outside the Mac App Store** (Developer ID + notarized DMG).  
+Ship Cadence **outside the Mac App Store** (Developer ID + notarized DMG).  
 This guide wires **Supabase** (auth + DB), **Cloudflare Workers** (Groq proxy), and optional **Stripe** (billing).
 
 ---
@@ -49,10 +49,10 @@ In Cloudflare dashboard → **Workers & Pages** → your worker → **Triggers**
 
 ---
 
-## 3. Mellotron app config
+## 3. Cadence app config
 
 ```bash
-cp Mellotron/Resources/CloudConfig.example.plist Mellotron/Resources/CloudConfig.plist
+cp Cadence/Resources/CloudConfig.example.plist Cadence/Resources/CloudConfig.plist
 ```
 
 Edit `CloudConfig.plist`:
@@ -72,7 +72,7 @@ Regenerate Xcode project:
 xcodegen generate
 ```
 
-Enable **Sign in with Apple** capability in Xcode → Signing & Capabilities (matches `Mellotron.entitlements`).
+Enable **Sign in with Apple** capability in Xcode → Signing & Capabilities (matches `Cadence.entitlements`).
 
 ---
 
@@ -80,7 +80,7 @@ Enable **Sign in with Apple** capability in Xcode → Signing & Capabilities (ma
 
 | Mode | What happens |
 |------|----------------|
-| **Auto** (default) | Signed into Mellotron Cloud → your proxy. Else BYOK Groq key. Else Apple Speech. |
+| **Auto** (default) | Signed into Cadence Cloud → your proxy. Else BYOK Groq key. Else Apple Speech. |
 | **Cloud only** | Proxy only (needs sign-in / anonymous session). |
 | **BYOK** | User's own Groq key (Settings → Dictation). |
 
@@ -111,7 +111,7 @@ git tag v0.1.0 && git push origin v0.1.0
 
 Workflow: `.github/workflows/release.yml` — set secrets listed in that file.
 
-Distribute `Mellotron.dmg` from your website. Add **Sparkle** for auto-updates later.
+Distribute `Cadence.dmg` from your website. Add **Sparkle** for auto-updates later.
 
 ---
 
@@ -119,7 +119,7 @@ Distribute `Mellotron.dmg` from your website. Add **Sparkle** for auto-updates l
 
 | Benefit | Use for |
 |---------|---------|
-| Namecheap `.me` | `mellotron.me` + `api.mellotron.me` |
+| Namecheap `.me` | `cadence.me` + `api.cadence.me` |
 | Sentry team | Crash reports — add SPM `sentry-cocoa`, uncomment `CrashReporter.swift` |
 | GitHub Actions | Release workflow (included) |
 | 1Password | Store Groq / Supabase / Stripe secrets |
@@ -140,7 +140,7 @@ Skip Heroku/Azure for this stack — Cloudflare + Supabase free tiers are enough
 
 ## Mac App Store?
 
-**Not viable** for Mellotron (global hotkey tap, Accessibility paste, Chrome cookies).  
+**Not viable** for Cadence (global hotkey tap, Accessibility paste, Chrome cookies).  
 Use **Developer ID + notarization** — same path as Wispr Flow, Raycast, Cursor.
 
 Your Apple Developer account is still required for **signing + notarization + Sign in with Apple**.

@@ -72,12 +72,12 @@ export function Destinations() {
     >
       <div className="mx-auto max-w-6xl">
         <LightSectionEyebrow>Destinations</LightSectionEyebrow>
-      <h2 className="mt-4 max-w-3xl font-display text-5xl leading-tight tracking-tightest md:text-6xl">
+      <h2 className="mt-4 max-w-3xl font-display text-[2.5rem] leading-[1.08] tracking-tightest md:text-[3.2rem]">
         Ten destinations.{" "}
         <span className="italic-display text-mello-deep">Zero pronunciation standards.</span>
       </h2>
 
-      <p className="mt-6 h-6 font-mono text-[11px] uppercase tracking-[0.2em] text-mello-ink/50" aria-live="off">
+      <p className="mt-6 h-6 text-[12px] font-semibold tracking-wide text-mello-ink/50" aria-live="off">
         {demo ? (
           <>
             <span className="text-mello-ink/70">&ldquo;hey {demo.alias}&rdquo;</span>
@@ -100,7 +100,7 @@ export function Destinations() {
             }`}
           >
             <h3 className="font-display text-2xl tracking-tightest">{d.name}</h3>
-            <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.2em] text-mello-ink/45">
+            <p className="mt-1 text-[12px] font-semibold tracking-wide text-mello-ink/45">
               {d.hint}
             </p>
             <div className="mt-4 flex flex-wrap gap-1.5">

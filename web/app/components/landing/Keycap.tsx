@@ -64,7 +64,7 @@ export function Keycap({
           space
         </span>
       </button>
-      <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-mello-ink/50">
+      <p className="text-[12px] font-semibold tracking-wide text-mello-ink/50">
         <kbd className="rounded border border-mello-ink/20 bg-white/60 px-1.5 py-0.5">⌥ right option</kbd>{" "}
         on your Mac
       </p>

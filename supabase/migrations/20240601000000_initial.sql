@@ -1,4 +1,4 @@
--- Mellotron backend schema (Supabase Postgres)
+-- Cadence backend schema (Supabase Postgres)
 -- Run: supabase db push   OR paste into Supabase SQL editor
 
 -- ── Profiles (extends auth.users) ───────────────────────────────────────────
@@ -89,4 +89,4 @@ grant execute on function public.reset_quota_if_needed(uuid) to service_role;
 grant execute on function public.increment_transcription_seconds(uuid, numeric) to service_role;
 
 -- Free tier: 10,800 seconds/month ≈ 3 hours of audio
-comment on table public.profiles is 'Per-user plan and transcription quota for Mellotron Cloud';
+comment on table public.profiles is 'Per-user plan and transcription quota for Cadence Cloud';

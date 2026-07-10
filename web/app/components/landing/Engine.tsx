@@ -47,7 +47,7 @@ export function Engine() {
   return (
     <section ref={rootRef as React.Ref<HTMLElement>} className="mx-auto max-w-6xl px-6 py-28">
       <SectionEyebrow>Under the hood</SectionEyebrow>
-      <h2 className="mt-4 max-w-3xl font-display text-5xl leading-tight tracking-tightest md:text-6xl">
+      <h2 className="mt-4 max-w-3xl font-display text-[2.5rem] leading-[1.08] tracking-tightest md:text-[3.2rem]">
         Fast by default. <span className="italic-display text-mello">Never stranded.</span>
       </h2>
 
@@ -83,7 +83,7 @@ export function Engine() {
         </div>
       </div>
 
-      <p className="mt-10 font-mono text-[11px] uppercase tracking-[0.2em] text-white/50">
+      <p className="mt-10 text-[12px] font-semibold tracking-wide text-white/50">
         auto mode: fast when connected · on-device when not
       </p>
     </section>

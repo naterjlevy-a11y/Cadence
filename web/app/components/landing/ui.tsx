@@ -21,7 +21,7 @@ export function Logo() {
 
 export function SectionEyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.2em] text-white/55">
+    <div className="flex items-center gap-3 text-[12px] font-semibold tracking-wide text-white/55">
       <span className="h-px w-8 bg-white/30" />
       {children}
     </div>
@@ -30,7 +30,7 @@ export function SectionEyebrow({ children }: { children: React.ReactNode }) {
 
 export function LightSectionEyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.2em] text-mello-ink/55">
+    <div className="flex items-center gap-3 text-[12px] font-semibold tracking-wide text-mello-ink/55">
       <span className="h-px w-8 bg-mello-ink/30" />
       {children}
     </div>
