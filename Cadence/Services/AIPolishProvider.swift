@@ -148,18 +148,26 @@ final class AIPolishProvider {
 
         4. REJOIN abrupt sentence breaks caused by speech pauses. Apple Speech inserts a period after long pauses. If a "sentence" ends with an open clause — gerund ("I'm going to."), preposition ("to.", "for.", "about."), or speech-act verb ("I'm excited to announce.", "I want to say.") — and the next sentence is its grammatical continuation, MERGE them into one sentence with no comma.
 
-        5. DETECT spoken enumerations and format as numbered lists. Triggers:
-           - "X things" / "X reasons" / "X points" / "X items" / "a few things" / "a couple of things" — when followed by enumeration
-           - explicit cardinals: "one... two... three..."
-           - explicit ordinals: "first... second... third..."
-           When triggered, format as:
+        5. DETECT spoken enumerations and format as numbered lists — be GENEROUS: if the
+           speaker clearly lists sequential items, format it, don't leave it inline.
+           Triggers (any of):
+           - "X things/reasons/points/items/ways/steps" (e.g. "three ways of thinking")
+           - "a few things" / "a couple of things"
+           - explicit cardinals used as list markers: "one, ... two, ... three, ..."
+           - explicit ordinals: "first ... second ... third ..."
+           - semicolon- or comma-separated series introduced with a colon after a lead-in
+           When the items are spoken with cardinal/ordinal markers ("one,"/"first,"), ALWAYS
+           break them onto their own numbered lines even if the speaker ran them together
+           inline. Format as:
              intro line ending with a colon
              blank line
              1. item one
              2. item two
+             3. item three
              blank line
-             continuation prose
-           If the introducer like "two things" is NOT followed by enumeration, keep it as prose.
+             any continuation prose
+           Strip the spoken "one,"/"two,"/"first,"/"second," markers — the number replaces them.
+           Only keep as prose if there is a lead-in like "two things" with NO actual items listed.
 
         6. Capitalize "I" always. Capitalize the start of every sentence.
 
@@ -190,6 +198,9 @@ final class AIPolishProvider {
 
         Input: "yeah i was thinking we could maybe just go to the store and grab some milk and bread"
         Output: {"polished":"Yeah, I was thinking we could maybe just go to the store and grab some milk and bread."}
+
+        Input: "so i have three different ways of thinking about this one hillary doesnt know whats up two hong kong disneyland was really cool and three what is the capital of france"
+        Output: {"polished":"I have three different ways of thinking about this:\\n\\n1. Hillary doesn't know what's up\\n2. Hong Kong Disneyland was really cool\\n3. What is the capital of France?"}
 
         Input: "i wanna talk about three things. the launch. the pricing. and the marketing."
         Output: {"polished":"I want to talk about three things:\\n\\n1. The launch\\n2. The pricing\\n3. The marketing"}

@@ -259,47 +259,48 @@ private struct MenuBarPanelView: View {
     private var permissionBanner: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .font(.system(size: 11))
-                Text("Permissions need a refresh")
-                    .font(.melloBody(12, weight: .semibold))
+                Image(systemName: "lock.circle.fill")
+                    .foregroundStyle(Color.mello)
+                    .font(.system(size: 12))
+                Text("Finish setup")
+                    .font(.cadMedium(12))
+                    .foregroundStyle(Color.textPrimary)
                 Spacer()
                 Button {
                     prefs.permissionBannerDismissedSignature = Self.permissionsSignature(permissions.missingPermissions)
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.textTertiary)
                         .padding(4)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Hide until the next permission change")
+                .help("Hide")
             }
-            Text("macOS shows the toggle as ON but it's denied. Open Permission Repair to fix.")
-                .font(.melloBody(10.5))
-                .foregroundStyle(.secondary)
+            Text("Cadence needs \(permissions.missingPermissions.map(\.name).joined(separator: " and ")) to work.")
+                .font(.cadBody(10.5))
+                .foregroundStyle(Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
-                Button("Repair") { onOpenPermissionRepair() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .tint(.orange)
-                Button("Quick repair") { permissions.resetAllAndReprompt() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            Button("Open Settings") {
+                if permissions.accessibility != .granted {
+                    permissions.openAccessibilitySettings()
+                } else {
+                    permissions.requestMicrophone { _ in }
+                }
             }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.orange.opacity(0.10))
+                .fill(Color.mello.opacity(0.10))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.orange.opacity(0.35), lineWidth: 0.6)
+                .strokeBorder(Color.mello.opacity(0.30), lineWidth: 0.6)
         )
     }
 
