@@ -137,15 +137,17 @@ final class RoutingPhraseParser {
         let nextWord = remainderLower
             .split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
             .first.map(String.init) ?? ""
-        guard nextWord.count >= 3 else { return nil }
+        // Need a real, reasonably long word before we'll even consider routing.
+        guard nextWord.count >= 4 else { return nil }
 
+        // Only DISTINCTIVE mispronunciations — never common English words like
+        // "chat", "cloud", "ocean" that would false-trigger during normal speech.
         let phonetic: [String: String] = [
-            "claudia": "claude", "clod": "claude", "clawd": "claude", "cloud": "claude",
-            "chat": "chatgpt", "gpt": "chatgpt",
-            "jiminy": "gemini", "jimmy": "gemini", "gemma": "gemini",
-            "cursa": "cursor", "kurser": "cursor",
-            "complexity": "perplexity",
-            "ocean": "notion",
+            "claudia": "claude", "claudio": "claude", "clawd": "claude",
+            "chatgpt": "chatgpt", "chatgbt": "chatgpt",
+            "jiminy": "gemini", "gemeni": "gemini",
+            "kurser": "cursor", "kursor": "cursor",
+            "perplexity": "perplexity", "perplexed": "perplexity",
         ]
         let corrected = phonetic[nextWord] ?? nextWord
 
@@ -158,18 +160,22 @@ final class RoutingPhraseParser {
         }
         guard let match = best else { return nil }
 
-        if match.dist <= 2 {
+        // Only AUTO-ROUTE when the spoken word is essentially the alias (exact
+        // or a single edit away). Anything looser pastes in place — a wrong app
+        // opening is far more disruptive than a missed route.
+        if match.dist <= 1 {
             let prefix = "\(verb) \(nextWord)"
             return buildResult(
                 prefix: prefix,
                 source: normalized,
                 destination: match.dest,
                 matched: prefix,
-                baseConfidence: 0.75
+                baseConfidence: 0.85
             )
         }
 
-        let suggestion = (match.dist <= 3 && nextWord.count >= 4) ? match.dest.displayName : nil
+        // Close-but-not-confident → don't route, just offer a "did you mean" hint.
+        let suggestion = (match.dist <= 2 && nextWord.count >= 5) ? match.dest.displayName : nil
         return RouteParseResult(
             destination: nil,
             subdestination: nil,
