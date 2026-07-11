@@ -50,9 +50,7 @@ struct OnboardingFlowView: View {
     private func autoAdvancePastGranted() {
         guard step == .permissions else { return }
         if permissions.microphone == .granted,
-           permissions.speechRecognition == .granted,
-           permissions.accessibility == .granted,
-           permissions.inputMonitoring == .granted {
+           permissions.accessibility == .granted {
             step = .pushToTalkKey
         }
     }
@@ -363,15 +361,13 @@ private struct PermissionsStep: View {
 
     private var allGranted: Bool {
         permissions.microphone == .granted &&
-        permissions.speechRecognition == .granted &&
-        permissions.accessibility == .granted &&
-        permissions.inputMonitoring == .granted
+        permissions.accessibility == .granted
     }
 
     var body: some View {
         StepShell(
             title: "A few quick permissions.",
-            subtitle: "Two are a single tap. Two need one toggle in System Settings — Cadence will already be listed, so it's just flipping a switch.",
+            subtitle: "Microphone is a single tap. Accessibility needs one toggle in System Settings — that's the whole setup.",
             primaryLabel: allGranted ? "All set — continue" : "Continue",
             onPrimary: onContinue
         ) {
@@ -388,13 +384,6 @@ private struct PermissionsStep: View {
                         action: { permissions.requestMicrophone { _ in } },
                         settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
                     )
-                    OnboardingPermRow(
-                        title: "Speech Recognition",
-                        detail: "Powers on-device transcription.",
-                        state: permissions.speechRecognition,
-                        action: { permissions.requestSpeechRecognition { _ in } },
-                        settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
-                    )
                 }
 
                 // One toggle in Settings
@@ -408,14 +397,6 @@ private struct PermissionsStep: View {
                         state: permissions.accessibility,
                         action: { permissions.openAccessibilitySettings() },
                         settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-                        opensSettings: true
-                    )
-                    OnboardingPermRow(
-                        title: "Input Monitoring",
-                        detail: "Detects your push-to-talk key anywhere.",
-                        state: permissions.inputMonitoring,
-                        action: { permissions.requestInputMonitoring() },
-                        settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
                         opensSettings: true
                     )
                     Text("When Settings opens, flip the switch next to Cadence. This window updates on its own.")

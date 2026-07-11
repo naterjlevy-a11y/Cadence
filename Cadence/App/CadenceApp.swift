@@ -67,7 +67,7 @@ final class CadenceApp: NSObject, NSApplicationDelegate {
 
         // Hotkey wiring.
         hotkeys.delegate = self
-        if permissions.inputMonitoring == .granted {
+        if permissions.accessibility == .granted {
             hotkeys.start()
         }
 
@@ -107,7 +107,7 @@ final class CadenceApp: NSObject, NSApplicationDelegate {
         Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.permissions.refreshAll()
-            if self.permissions.inputMonitoring == .granted && self.hotkeys.isListening == false {
+            if self.permissions.accessibility == .granted && self.hotkeys.isListening == false {
                 self.hotkeys.start()
             }
         }

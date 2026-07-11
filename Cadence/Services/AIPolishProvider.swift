@@ -41,9 +41,11 @@ final class AIPolishProvider {
         guard let url = CloudConfig.shared.polishURL else {
             completion(.success(text)); return
         }
-        AuthService.shared.ensureCloudSessionReady { [weak self] _ in
+        // Refresh first — an expired token silently drops the AI polish and
+        // pastes raw text. Same fix as the quota/transcription paths.
+        AuthService.shared.withFreshToken { [weak self] freshToken in
             guard let self else { completion(.success(text)); return }
-            let token = AuthService.shared.accessToken ?? ""
+            let token = freshToken ?? ""
             guard !token.isEmpty else { completion(.success(text)); return }
 
             let payload: [String: Any] = ["text": text, "flavor": flavor.rawValue]

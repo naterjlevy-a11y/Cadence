@@ -117,7 +117,9 @@ final class AuthService: NSObject, ObservableObject {
         isAnonymous = UserPreferences.shared.cloudIsAnonymous
         if isSignedIn {
             scheduleRefresh()
-            fetchQuota()
+            withFreshToken { [weak self] _ in
+                DispatchQueue.main.async { self?.fetchQuota() }
+            }
         }
     }
 
@@ -570,6 +572,39 @@ final class AuthService: NSObject, ObservableObject {
 
     // MARK: - Token refresh + quota
 
+    /// Decodes a JWT's `exp` claim → expiry Date (nil if unparseable).
+    static func jwtExpiry(_ token: String) -> Date? {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b64 = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        guard let data = Data(base64Encoded: b64),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let exp = obj["exp"] as? Double else { return nil }
+        return Date(timeIntervalSince1970: exp)
+    }
+
+    /// True if there is no token, or it expires within the next 5 minutes.
+    var accessTokenNeedsRefresh: Bool {
+        guard let token = accessToken, !token.isEmpty else { return true }
+        guard let exp = Self.jwtExpiry(token) else { return true }
+        return Date().addingTimeInterval(300) >= exp
+    }
+
+    /// Guarantees a fresh access token before running cloud work: refreshes
+    /// first if the current one is expired/near-expiry, then hands back the
+    /// (possibly new) token. This is what fixes "signed in but everything 401s
+    /// after an hour" — including the plan showing Free and cloud transcription
+    /// failing. Completion runs on an arbitrary queue.
+    func withFreshToken(_ completion: @escaping (String?) -> Void) {
+        if !accessTokenNeedsRefresh {
+            completion(accessToken); return
+        }
+        refreshSessionIfNeeded { [weak self] _ in
+            completion(self?.accessToken)
+        }
+    }
+
     func refreshSessionIfNeeded(completion: ((Bool) -> Void)? = nil) {
         let refresh = SecretStore.shared.supabaseRefreshToken
         guard !refresh.isEmpty, let base = CloudConfig.shared.supabaseURL else {
@@ -590,8 +625,14 @@ final class AuthService: NSObject, ObservableObject {
     }
 
     func fetchQuota() {
-        guard let url = CloudConfig.shared.quotaURL,
-              let token = accessToken, !token.isEmpty else { return }
+        guard let url = CloudConfig.shared.quotaURL else { return }
+        withFreshToken { [weak self] token in
+            guard let token, !token.isEmpty else { return }
+            self?.performQuotaFetch(url: url, token: token)
+        }
+    }
+
+    private func performQuotaFetch(url: URL, token: String) {
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -695,7 +736,7 @@ final class AuthService: NSObject, ObservableObject {
 
     private func scheduleRefresh() {
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 45 * 60, repeats: true) { [weak self] _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 40 * 60, repeats: true) { [weak self] _ in
             self?.refreshSessionIfNeeded()
         }
     }

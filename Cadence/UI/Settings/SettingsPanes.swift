@@ -99,6 +99,12 @@ struct GeneralPane: View {
     @ObservedObject private var perms = PermissionsManager.shared
 
     var body: some View {
+        content
+            .onAppear { perms.refreshAll(); perms.startPolling() }
+            .onDisappear { perms.stopPolling() }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 18) {
             CCard {
                 CRow(title: "Launch at login") {
@@ -130,20 +136,11 @@ struct GeneralPane: View {
 
             CSection("Permissions")
             CCard {
-                permissionRow("Microphone", perms.microphone)
+                permissionRow("Microphone", perms.microphone,
+                              action: { perms.requestMicrophone { _ in } })
                 CDivider()
-                permissionRow("Speech recognition", perms.speechRecognition)
-                CDivider()
-                permissionRow("Accessibility", perms.accessibility)
-                CDivider()
-                permissionRow("Input monitoring", perms.inputMonitoring)
-                CDivider()
-                CRow(title: "Something not working?") {
-                    Button("Repair…") {
-                        PermissionRepairWindowController().showWindow(nil)
-                    }
-                    .controlSize(.small)
-                }
+                permissionRow("Accessibility", perms.accessibility,
+                              opensSettings: true, action: { perms.openAccessibilitySettings() })
             }
 
             HStack {
@@ -161,13 +158,22 @@ struct GeneralPane: View {
         }
     }
 
-    private func permissionRow(_ name: String, _ status: PermissionStatus) -> some View {
+    @ViewBuilder
+    private func permissionRow(_ name: String, _ status: PermissionStatus,
+                               opensSettings: Bool = false,
+                               action: @escaping () -> Void) -> some View {
         CRow(title: name) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 CStatusDot(ok: status == .granted)
-                Text(status == .granted ? "Granted" : "Needed")
-                    .font(.cadBody(11.5))
-                    .foregroundStyle(Color.textSecondary)
+                if status == .granted {
+                    Text("On")
+                        .font(.cadMedium(11.5))
+                        .foregroundStyle(.green)
+                } else {
+                    Button(opensSettings ? "Open Settings" : "Allow", action: action)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                }
             }
         }
     }
@@ -215,6 +221,9 @@ struct DictationPane: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 230)
+                    .onChange(of: prefs.preferOnDeviceTranscription) { _, onDevice in
+                        if onDevice { PermissionsManager.shared.requestSpeechRecognition { _ in } }
+                    }
                 }
                 CDivider()
                 CRow(title: "Max recording length") {

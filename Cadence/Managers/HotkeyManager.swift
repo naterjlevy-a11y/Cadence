@@ -23,8 +23,11 @@ protocol HotkeyManagerDelegate: AnyObject {
 final class HotkeyManager {
     weak var delegate: HotkeyManagerDelegate?
 
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    // NSEvent global/local monitors — these need only Accessibility, NOT the
+    // Input Monitoring permission a CGEventTap would require. (Same model as
+    // Wispr Flow: Microphone + Accessibility only.)
+    private var globalMonitor: Any?
+    private var localMonitor: Any?
     private var isRecording = false
     private var capsLockOn = false
 
@@ -102,48 +105,26 @@ final class HotkeyManager {
     }
 
     func start() {
-        guard eventTap == nil else { return }
-        let mask: CGEventMask =
-            (1 << CGEventType.flagsChanged.rawValue) |
-            (1 << CGEventType.keyDown.rawValue) |
-            (1 << CGEventType.keyUp.rawValue)
-
-        let userInfo = Unmanaged.passUnretained(self).toOpaque()
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: mask,
-            callback: { _, type, event, refcon in
-                guard let refcon else { return Unmanaged.passUnretained(event) }
-                let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
-                manager.handleEvent(type: type, event: event)
-                return Unmanaged.passUnretained(event)
-            },
-            userInfo: userInfo
-        ) else {
-            Log.hotkey.error("Failed to create CGEvent tap. Likely missing Input Monitoring permission.")
-            isListening = false
-            return
+        guard globalMonitor == nil else { return }
+        let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .keyUp]
+        // Global monitor: fires for events in other apps (the normal case).
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] ev in
+            self?.handle(nsEvent: ev)
         }
-
-        eventTap = tap
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        isListening = true
+        // Local monitor: fires when Cadence's own window is focused.
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] ev in
+            self?.handle(nsEvent: ev)
+            return ev
+        }
+        isListening = (globalMonitor != nil)
         Log.hotkey.info("HotkeyManager started: key=\(self.key.displayName, privacy: .public) mode=\(self.activationMode.rawValue, privacy: .public)")
     }
 
     func stop() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-        }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
-        }
-        eventTap = nil
-        runLoopSource = nil
+        if let m = globalMonitor { NSEvent.removeMonitor(m) }
+        if let m = localMonitor { NSEvent.removeMonitor(m) }
+        globalMonitor = nil
+        localMonitor = nil
         isListening = false
         if isRecording {
             isRecording = false
@@ -153,59 +134,46 @@ final class HotkeyManager {
 
     // MARK: - Event handling
 
-    private func handleEvent(type: CGEventType, event: CGEvent) {
+    private func handle(nsEvent ev: NSEvent) {
         guard !UserPreferences.shared.paused else { return }
-
-        // Re-enable disabled tap if macOS times us out
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
-            return
-        }
+        let keyCode = Int(ev.keyCode)
+        let flags = ev.modifierFlags
 
         // Allow Esc to cancel an in-progress recording.
-        if isRecording && type == .keyDown {
-            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            if keyCode == kVK_Escape {
-                Log.hotkey.info("Escape pressed during recording -> cancelling")
-                isRecording = false
-                lastKeyDownTime = nil
-                lastTapTime = nil
-                hybridLatched = false
-                hybridStartedFromHold = false
-                DispatchQueue.main.async { [weak self] in self?.delegate?.hotkeyDidCancel() }
-                return
-            }
+        if isRecording && ev.type == .keyDown && keyCode == kVK_Escape {
+            Log.hotkey.info("Escape pressed during recording -> cancelling")
+            isRecording = false
+            lastKeyDownTime = nil
+            lastTapTime = nil
+            hybridLatched = false
+            hybridStartedFromHold = false
+            DispatchQueue.main.async { [weak self] in self?.delegate?.hotkeyDidCancel() }
+            return
         }
 
         switch key {
         case .rightControl, .rightOption, .capsLock, .fnGlobe:
-            handleModifierStyleEvent(type: type, event: event)
+            guard ev.type == .flagsChanged else { return }
+            handleModifierStyleEvent(keyCode: keyCode, flags: flags)
         case .f5, .f6, .f13, .f14, .f15, .custom:
-            handleKeyEvent(type: type, event: event)
+            handleKeyEvent(type: ev.type, keyCode: keyCode)
         }
     }
 
-    private func handleModifierStyleEvent(type: CGEventType, event: CGEvent) {
-        guard type == .flagsChanged else { return }
-        let flags = event.flags
-        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
-
+    private func handleModifierStyleEvent(keyCode: Int, flags: NSEvent.ModifierFlags) {
         switch key {
         case .rightControl:
             guard keyCode == 62 else { return }
-            handleKeyTransition(isPressed: flags.contains(.maskControl))
+            handleKeyTransition(isPressed: flags.contains(.control))
         case .rightOption:
             guard keyCode == 61 else { return }
-            handleKeyTransition(isPressed: flags.contains(.maskAlternate))
+            handleKeyTransition(isPressed: flags.contains(.option))
         case .fnGlobe:
             guard keyCode == 63 else { return }
-            handleKeyTransition(isPressed: flags.contains(.maskSecondaryFn))
+            handleKeyTransition(isPressed: flags.contains(.function))
         case .capsLock:
             guard keyCode == kVK_CapsLock else { return }
-            // Caps lock generates flag changes on press AND release. We track
-            // both transitions and feed them through the same press/release
-            // pipeline as everything else.
-            let isOn = flags.contains(.maskAlphaShift)
+            let isOn = flags.contains(.capsLock)
             if isOn != capsLockOn {
                 capsLockOn = isOn
                 handleKeyTransition(isPressed: isOn)
@@ -214,8 +182,7 @@ final class HotkeyManager {
         }
     }
 
-    private func handleKeyEvent(type: CGEventType, event: CGEvent) {
-        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+    private func handleKeyEvent(type: NSEvent.EventType, keyCode: Int) {
         let target: Int
         switch key {
         case .f5: target = kVK_F5
@@ -227,7 +194,6 @@ final class HotkeyManager {
         default: target = -1
         }
         guard keyCode == target, target >= 0 else { return }
-
         if type == .keyDown {
             handleKeyTransition(isPressed: true)
         } else if type == .keyUp {

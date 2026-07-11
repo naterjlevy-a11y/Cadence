@@ -200,11 +200,19 @@ final class CadenceCloudTranscriptionProvider: TranscriptionProvider {
             completion(.failure(DictationError.transcriptionFailed("Cadence Cloud is not configured.")))
             return
         }
-        let token = AuthService.shared.accessToken ?? ""
-        guard !token.isEmpty else {
-            completion(.failure(DictationError.transcriptionFailed("Sign in to Cadence Cloud in Settings → Account, or use your own Groq key.")))
-            return
+        // Always refresh the token first — an expired cloud token would 401.
+        AuthService.shared.withFreshToken { [weak self] freshToken in
+            guard let self else { return }
+            guard let token = freshToken, !token.isEmpty else {
+                completion(.failure(DictationError.transcriptionFailed("Sign in to Cadence Cloud in Settings → Account, or use your own Groq key.")))
+                return
+            }
+            self.performCloudTranscription(fileURL: fileURL, endpoint: endpoint, token: token, completion: completion)
         }
+    }
+
+    private func performCloudTranscription(fileURL: URL, endpoint: URL, token: String,
+                                           completion: @escaping (Result<TranscriptionResult, Error>) -> Void) {
 
         let prefs = UserPreferences.shared
         let model = prefs.groqWhisperModel.isEmpty ? "whisper-large-v3-turbo" : prefs.groqWhisperModel

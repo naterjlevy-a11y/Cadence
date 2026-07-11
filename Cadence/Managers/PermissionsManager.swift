@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import AVFoundation
 import ApplicationServices
+import CoreGraphics
 import Combine
 import Speech
 
@@ -107,11 +108,56 @@ final class PermissionsManager: ObservableObject {
         return AXIsProcessTrustedWithOptions(options) ? .granted : .denied
     }
 
+    /// System Settings caches the Accessibility / Input-Monitoring list. If it's
+    /// already open when we register, it shows a stale snapshot WITHOUT Cadence,
+    /// forcing the user to the "+" button. Quitting it first guarantees a fresh
+    /// list that includes us.
+    private func quitSystemSettings() {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences") {
+            app.terminate()
+        }
+    }
+
+    /// Attempt a real accessibility read. Like the event-tap trick for Input
+    /// Monitoring, the *attempt* is what registers Cadence in the Accessibility
+    /// list — requesting the prompt alone doesn't reliably add it on macOS 26.
+    private func registerAsAccessibilityConsumer() {
+        let system = AXUIElementCreateSystemWide()
+        var focused: CFTypeRef?
+        _ = AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused)
+    }
+
+    /// Attempt a throwaway listen-only event tap. It returns non-nil only when
+    /// authorized, but the *attempt itself* is what registers Cadence as an
+    /// event-tap consumer in the Input Monitoring list — this is the missing
+    /// registration trigger.
+    private func registerAsEventTapConsumer() {
+        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+        if let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .listenOnly,
+            eventsOfInterest: mask,
+            callback: { _, _, event, _ in Unmanaged.passUnretained(event) },
+            userInfo: nil
+        ) {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+    }
+
     func openAccessibilitySettings() {
-        // First request a prompt so macOS adds Cadence to the list.
+        NSApp.activate(ignoringOtherApps: true)
+        // Registers Cadence in the Accessibility list (unchecked).
         _ = currentAccessibilityStatus(prompt: true)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
+        // The actual AX read is the real registration trigger (mirrors the
+        // event-tap trick that fixed Input Monitoring).
+        registerAsAccessibilityConsumer()
+        // Refresh the pane so the just-added entry actually shows.
+        quitSystemSettings()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
         }
         startPolling()
     }
@@ -119,26 +165,27 @@ final class PermissionsManager: ObservableObject {
     // MARK: - Input Monitoring
 
     func currentInputMonitoringStatus() -> PermissionStatus {
-        // IOHIDCheckAccess is the documented API but is in IOKit and not always
-        // accurate for our use case. We use a probe: try to create a tap. If it
-        // succeeds we have permission, otherwise we don't.
+        // We listen via a CGEventTap, so the matching permission is the
+        // CoreGraphics "listen event" access — NOT IOHID. Using the wrong API
+        // pair is why the app failed to appear in the Input Monitoring list.
         if #available(macOS 10.15, *) {
-            let access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
-            switch access {
-            case kIOHIDAccessTypeGranted: return .granted
-            case kIOHIDAccessTypeDenied: return .denied
-            case kIOHIDAccessTypeUnknown: return .notDetermined
-            default: return .unknown
-            }
+            return CGPreflightListenEventAccess() ? .granted : .denied
         }
         return .granted
     }
 
     func requestInputMonitoring() {
-        // Triggers the system prompt to add Cadence to the list.
-        _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
-            NSWorkspace.shared.open(url)
+        NSApp.activate(ignoringOtherApps: true)
+        if #available(macOS 10.15, *) {
+            _ = CGRequestListenEventAccess()
+        }
+        // The actual tap attempt is what lists us in the Input Monitoring pane.
+        registerAsEventTapConsumer()
+        quitSystemSettings()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+                NSWorkspace.shared.open(url)
+            }
         }
         startPolling()
     }
@@ -146,12 +193,14 @@ final class PermissionsManager: ObservableObject {
     // MARK: - Repair (stuck TCC after ad-hoc rebuild)
 
     /// Which permissions are currently NOT granted, in display order.
+    /// Only the two permissions Cadence actually requires. Speech Recognition
+    /// is deferred (on-device only) and Input Monitoring was dropped entirely
+    /// (the hotkey now uses an NSEvent monitor gated on Accessibility). So a
+    /// user with Mic + Accessibility is fully set up — no "repair" needed.
     var missingPermissions: [(name: String, kind: TCCKind)] {
         var out: [(String, TCCKind)] = []
         if microphone != .granted { out.append(("Microphone", .microphone)) }
-        if speechRecognition != .granted { out.append(("Speech Recognition", .speech)) }
         if accessibility != .granted { out.append(("Accessibility", .accessibility)) }
-        if inputMonitoring != .granted { out.append(("Input Monitoring", .inputMonitoring)) }
         return out
     }
 
