@@ -42,7 +42,16 @@ final class RoutingPhraseParser {
     /// is dictated verbatim into the current app. We deliberately do NOT route
     /// on action verbs ("open …", "go to …") or a bare product name, because
     /// those fire on ordinary speech and silently open random apps.
-    private let greetingVerbs: [String] = ["hey", "hey there", "hi", "hello", "okay", "ok", "yo", "yoh"]
+    /// Includes the common ASR manglings of "hey" (it's one syllable and gets
+    /// heard as "hay" / "heya" / "hi" constantly). "hey there" stays longest so
+    /// it's stripped whole before the bare "hey".
+    private let greetingVerbs: [String] = [
+        "hey there", "hello", "hey", "hay", "heya", "hi", "yo", "yoh", "okay", "ok"
+    ]
+
+    /// The subset of greetings short enough that Apple Speech routinely glues
+    /// them onto the next word ("heyclaude", "yochat"). Used for un-gluing.
+    private let gluableGreetings: [String] = ["heythere", "hey", "hay", "heya", "yo"]
 
     /// Alias of `greetingVerbs` for the exact "verb + alias" prefix pass.
     private var routingVerbs: [String] { greetingVerbs }
@@ -77,113 +86,152 @@ final class RoutingPhraseParser {
         let normalized = Self.normalizeForMatching(trimmed)
         let lower = normalized.lowercased()
 
-        // Build alias list, longest-first so multi-word aliases (e.g. "google docs")
-        // beat single-word ones.
-        let candidates = registry.destinations
-            .filter(\.enabled)
-            .flatMap { dest in dest.allAliases.map { (alias: $0, destination: dest) } }
-            .sorted { $0.alias.count > $1.alias.count }
-
-        for (alias, destination) in candidates {
-            // Special case: "current_app" aliases require strong markers because
-            // "here" / "this" are very common words.
-            if destination.id == "current_app" {
-                if let result = matchCurrentAppPhrase(in: normalized, alias: alias, destination: destination) {
+        // "current_app" uses distinctive markers ("here," / "this,") and is the
+        // one destination that does NOT require a greeting indicator.
+        for dest in registry.destinations where dest.enabled && dest.id == "current_app" {
+            for alias in dest.allAliases {
+                if let result = matchCurrentAppPhrase(in: normalized, alias: alias, destination: dest) {
                     return result
                 }
-                continue
             }
-
-            // Pattern A: verb + alias (e.g. "hey claude", "open cursor", "yo gemini")
-            for verb in routingVerbs {
-                let prefix = "\(verb) \(alias)"
-                if hasRoutingPrefix(lower, prefix: prefix) {
-                    if let result = buildResult(
-                        prefix: prefix,
-                        source: normalized,
-                        destination: destination,
-                        matched: prefix,
-                        baseConfidence: 0.95
-                    ) {
-                        return result
-                    }
-                }
-            }
-
         }
 
-        // A greeting was spoken ("Hey …") but no exact alias — fuzzy-match the
-        // next word; if still no confident match, suggest the closest.
-        if let greetingResult = matchAfterGreeting(in: normalized, lower: lower) {
-            return greetingResult
+        // Every other destination REQUIRES a greeting indicator at the very
+        // start ("hey", "ok", "yo" …) — the baseball sign. Given that gate, we
+        // resolve the destination generously from whatever follows.
+        if let routed = matchGreetingRoute(normalized: normalized, lower: lower) {
+            return routed
         }
 
         return RouteParseResult(destination: nil, subdestination: nil, matchedPhrase: nil, strippedText: trimmed, confidence: 1)
     }
 
-    /// Handles "Hey <word>" where <word> didn't match a destination exactly.
-    /// A close match routes; otherwise we pass the text through to the current
-    /// app and carry a `didYouMean` hint for the toast.
-    private func matchAfterGreeting(in normalized: String, lower: String) -> RouteParseResult? {
+    /// Given the greeting indicator at the start, intelligently resolve the
+    /// destination from the words that follow — even when Apple Speech mangles
+    /// or comma-splits the app name ("hey chat, GBT" → ChatGPT). We collapse
+    /// spaces/punctuation and test the first one-to-three spoken words against
+    /// every destination's aliases (also collapsed), so multi-word names match.
+    private func matchGreetingRoute(normalized: String, lower: String) -> RouteParseResult? {
+        // 1. Require and strip the greeting indicator (longest verb first).
         var verbUsed: String?
-        var remainderLower = lower
-        for verb in routingVerbs.sorted(by: { $0.count > $1.count }) where lower.hasPrefix("\(verb) ") {
-            verbUsed = verb
-            remainderLower = String(lower.dropFirst(verb.count + 1))
+        var remainderRaw = ""
+        for g in routingVerbs.sorted(by: { $0.count > $1.count }) where lower.hasPrefix("\(g) ") {
+            verbUsed = g
+            remainderRaw = String(normalized.dropFirst(g.count + 1))
             break
         }
-        guard let verb = verbUsed else { return nil }
 
-        let nextWord = remainderLower
-            .split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-            .first.map(String.init) ?? ""
-        // Need a real, reasonably long word before we'll even consider routing.
-        guard nextWord.count >= 4 else { return nil }
-
-        // Only DISTINCTIVE mispronunciations — never common English words like
-        // "chat", "cloud", "ocean" that would false-trigger during normal speech.
-        let phonetic: [String: String] = [
-            "claudia": "claude", "claudio": "claude", "clawd": "claude",
-            "chatgpt": "chatgpt", "chatgbt": "chatgpt",
-            "jiminy": "gemini", "gemeni": "gemini",
-            "kurser": "cursor", "kursor": "cursor",
-            "perplexity": "perplexity", "perplexed": "perplexity",
-        ]
-        let corrected = phonetic[nextWord] ?? nextWord
-
-        var best: (dest: Destination, dist: Int)?
-        for dest in registry.destinations.filter(\.enabled) where dest.id != "current_app" {
-            for alias in dest.allAliases {
-                let d = levenshtein(corrected, alias.lowercased())
-                if best == nil || d < best!.dist { best = (dest, d) }
+        // 1b. No spaced greeting — try an un-glued one ("heyclaude", "yochat").
+        //     Only for the short greetings ASR runs together, and only when a
+        //     real chunk of word follows (so we never split "heyday"/"history").
+        if verbUsed == nil {
+            let tokens = normalized.split(separator: " ").map(String.init)
+            if let firstTok = tokens.first {
+                let firstCollapsed = Self.collapse(firstTok)
+                for g in gluableGreetings.sorted(by: { $0.count > $1.count })
+                where firstCollapsed.hasPrefix(g) && firstCollapsed.count >= g.count + 3 {
+                    verbUsed = g
+                    let leftover = String(firstCollapsed.dropFirst(g.count))
+                    remainderRaw = ([leftover] + tokens.dropFirst()).joined(separator: " ")
+                    break
+                }
             }
         }
-        guard let match = best else { return nil }
 
-        // Only AUTO-ROUTE when the spoken word is essentially the alias (exact
-        // or a single edit away). Anything looser pastes in place — a wrong app
-        // opening is far more disruptive than a missed route.
-        if match.dist <= 1 {
-            let prefix = "\(verb) \(nextWord)"
-            return buildResult(
-                prefix: prefix,
-                source: normalized,
-                destination: match.dest,
-                matched: prefix,
-                baseConfidence: 0.85
+        guard let verb = verbUsed else { return nil }
+
+        // 2. Tokenize the remainder. Keep the raw tokens (to rebuild the content)
+        //    alongside clean collapsed words (to match).
+        let rawTokens = remainderRaw.split(separator: " ").map(String.init)
+        let words = rawTokens.map { Self.collapse($0) }
+        guard let firstWord = words.first, !firstWord.isEmpty else { return nil }
+
+        // 3. Build collapsed alias keys once.
+        var aliasKeys: [(dest: Destination, key: String)] = []
+        for dest in registry.destinations where dest.enabled && dest.id != "current_app" {
+            for alias in dest.allAliases {
+                let key = Self.collapse(alias)
+                if !key.isEmpty { aliasKeys.append((dest, key)) }
+            }
+        }
+
+        // 4. Test candidates built from the first 1…3 spoken words joined with no
+        //    spaces ("chat" then "chatgbt" then "chatgbtplease"). Smaller edit
+        //    distance wins; ties prefer consuming more words (the fuller name).
+        var best: (dest: Destination, dist: Int, wordsUsed: Int)?
+        let maxWords = min(3, words.count)
+        for n in 1...maxWords where !words[n - 1].isEmpty {
+            let candidate = Self.phoneticCollapse(words[0..<n].joined())
+            guard candidate.count >= 2 else { continue }
+            for ak in aliasKeys {
+                let d = levenshtein(candidate, ak.key)
+                guard d <= allowedDistance(forKeyLength: ak.key.count) else { continue }
+                let better = best.map { d < $0.dist || (d == $0.dist && n > $0.wordsUsed) } ?? true
+                if better { best = (ak.dest, d, n) }
+            }
+        }
+
+        guard let match = best else {
+            // Greeting was spoken but nothing matched — offer a "did you mean".
+            return RouteParseResult(
+                destination: nil, subdestination: nil, matchedPhrase: nil,
+                strippedText: normalized.trimmingCharacters(in: .whitespacesAndNewlines),
+                confidence: 1,
+                didYouMean: closestSuggestion(for: Self.phoneticCollapse(firstWord))
             )
         }
 
-        // Close-but-not-confident → don't route, just offer a "did you mean" hint.
-        let suggestion = (match.dist <= 2 && nextWord.count >= 5) ? match.dest.displayName : nil
+        // 5. Rebuild the content from the raw tokens after the consumed words.
+        var remainder = rawTokens.dropFirst(match.wordsUsed).joined(separator: " ")
+        if let f = remainder.first, f == "," || f == "." || f == ":" { remainder.removeFirst() }
+        remainder = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let (sub, afterSub) = peelSubdestination(remainder, in: match.dest)
+        let matchedPhrase = "\(verb) \(rawTokens.prefix(match.wordsUsed).joined(separator: " "))"
         return RouteParseResult(
-            destination: nil,
-            subdestination: nil,
-            matchedPhrase: nil,
-            strippedText: normalized.trimmingCharacters(in: .whitespacesAndNewlines),
-            confidence: 1,
-            didYouMean: suggestion
+            destination: match.dest,
+            subdestination: sub,
+            matchedPhrase: matchedPhrase,
+            strippedText: afterSub,
+            confidence: match.dist == 0 ? 0.95 : 0.85
         )
+    }
+
+    /// Allowed edit distance scales with alias length: short aliases ("gpt")
+    /// demand an exact hit, longer ones tolerate a mangled character or two.
+    private func allowedDistance(forKeyLength len: Int) -> Int {
+        switch len {
+        case 0...4: return 0
+        case 5...7: return 1
+        default: return 2
+        }
+    }
+
+    /// When a greeting was spoken but nothing matched confidently, find the
+    /// closest destination name for a "Did you mean X?" hint (no routing).
+    private func closestSuggestion(for candidate: String) -> String? {
+        guard candidate.count >= 4 else { return nil }
+        var best: (name: String, dist: Int)?
+        for dest in registry.destinations where dest.enabled && dest.id != "current_app" {
+            for alias in dest.allAliases {
+                let d = levenshtein(candidate, Self.collapse(alias))
+                if best == nil || d < best!.dist { best = (dest.displayName, d) }
+            }
+        }
+        guard let b = best, b.dist <= 2 else { return nil }
+        return b.name
+    }
+
+    /// Lowercase and strip everything that isn't a letter or digit.
+    static func collapse(_ s: String) -> String {
+        String(s.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+            .map(Character.init))
+    }
+
+    /// Collapse + a few distinctive sound-alike fixes the alias lists don't
+    /// already cover (Apple Speech loves "GBT" for "GPT").
+    static func phoneticCollapse(_ collapsed: String) -> String {
+        collapsed.replacingOccurrences(of: "gbt", with: "gpt")
     }
 
     private func levenshtein(_ a: String, _ b: String) -> Int {
@@ -203,18 +251,6 @@ final class RoutingPhraseParser {
             }
         }
         return row[bChars.count]
-    }
-
-    /// True if `text` starts with `prefix` followed by a non-alphanumeric
-    /// character (or end-of-string). This prevents "hey claude" from
-    /// matching "hey claudette" while still allowing "hey claude," and
-    /// "hey claude:" to match.
-    private func hasRoutingPrefix(_ text: String, prefix: String) -> Bool {
-        guard text.hasPrefix(prefix) else { return false }
-        let endIndex = text.index(text.startIndex, offsetBy: prefix.count)
-        if endIndex == text.endIndex { return true }
-        let next = text[endIndex]
-        return !next.isLetter && !next.isNumber
     }
 
     /// Normalize input for matching:

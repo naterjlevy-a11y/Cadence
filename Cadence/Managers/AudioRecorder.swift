@@ -127,12 +127,16 @@ final class AudioRecorder: ObservableObject {
         startedAt = Date()
         isRecording = true
 
-        let maxSec = max(1, UserPreferences.shared.maximumRecordingSeconds)
+        // The coordinator owns the primary recording cap (it drives the whole
+        // transcribe→route flow). This internal timer is only a last-ditch
+        // backstop a few seconds later, so the two never race and the
+        // coordinator's clean finalize wins in normal operation.
+        let maxSec = max(1, UserPreferences.shared.maximumRecordingSeconds) + 6
         maxRecordingTimer = Timer.scheduledTimer(
             withTimeInterval: TimeInterval(maxSec),
             repeats: false
         ) { [weak self] _ in
-            Log.audio.info("Maximum recording duration reached")
+            Log.audio.info("Maximum recording duration reached (internal backstop)")
             _ = try? self?.stopRecording()
         }
         Log.audio.info("Recording started at \(self.preferredSampleRate, privacy: .public) Hz (with \(self.preRollFrameCount, privacy: .public) pre-roll frames)")

@@ -37,23 +37,16 @@ enum TranscriptionVocabulary {
         return Array(terms)
     }
 
-    /// Whisper's prompt field accepts a short comma-separated string of
-    /// vocabulary hints. We keep it well under ~200 tokens by truncating
-    /// to ~80 terms — Whisper weights the start of the prompt heaviest.
+    /// Whisper's `prompt` biases decoding — but a LONG prompt full of proper
+    /// nouns and acronyms is actively harmful: on short, quiet, or unclear
+    /// audio Whisper regurgitates the prompt vocabulary as output, producing
+    /// trailing letter-soup like "MWI MNSAM CULA". So we keep the prompt tiny
+    /// and fixed — just enough to spell a handful of core product names it
+    /// otherwise mangles. The user's personal dictionary and destination
+    /// aliases are still fed to Apple Speech via `contextualStrings()`, which
+    /// biases without this regurgitation failure mode.
     static func whisperPrompt() -> String {
-        let priority: [String] = [
-            "Cadence, Wispr Flow, McGill, Claude, Anthropic, ChatGPT, OpenAI, Cursor, Gemini, GitHub, TypeScript, Node.js, Next.js, VS Code, Xcode, macOS, iOS, Formula SAE, Formula Electric",
-        ]
-        let extras = contextualStrings()
-            .sorted { $0.count > $1.count }
-            .prefix(60)
-        let allTerms = priority + extras
-        let joined = allTerms.joined(separator: ", ")
-        // Whisper prompt cap: ~896 chars is safe.
-        if joined.count > 800 {
-            return String(joined.prefix(800))
-        }
-        return joined
+        "Cadence, Claude, ChatGPT, Cursor, Gemini, Perplexity."
     }
 }
 

@@ -26,7 +26,12 @@ final class DictationCoordinator: ObservableObject {
 
     // MARK: - Published state
 
-    @Published private(set) var stage: DictationStage = .idle
+    @Published private(set) var stage: DictationStage = .idle {
+        didSet {
+            guard oldValue != stage else { return }
+            Log.coordinator.info("STAGE \(oldValue.rawValue, privacy: .public) -> \(self.stage.rawValue, privacy: .public)")
+        }
+    }
     @Published private(set) var lastError: String?
     @Published private(set) var liveLevel: Float = 0
     @Published private(set) var lastDestinationName: String?
@@ -45,6 +50,10 @@ final class DictationCoordinator: ObservableObject {
     private var levelObserver: AnyCancellable?
     private var sessionToken = UUID()
     private var watchdogTimer: Timer?
+    /// Ultimate backstop: forcibly finalizes a `.recording` session if a
+    /// key-release never reaches us (dropped NSEvent, crashed hotkey layer).
+    /// The pill / mic can then never hang open indefinitely.
+    private var recordingCapTimer: Timer?
     private var polishDeadlineWork: DispatchWorkItem?
     private var idleResetWork: DispatchWorkItem?
     private var polishFinished = false
@@ -74,6 +83,7 @@ final class DictationCoordinator: ObservableObject {
         do {
             try audio.startRecording()
             stage = .recording
+            startRecordingCap()
             SoundService.shared.playStart()
             Log.coordinator.info("Stage -> recording")
         } catch {
@@ -93,7 +103,27 @@ final class DictationCoordinator: ObservableObject {
         }
     }
 
+    /// Arms the recording backstop. Fires a couple of seconds after the
+    /// user's max-recording preference so the normal key-release path wins in
+    /// every ordinary case; only a genuinely dropped release triggers it.
+    private func startRecordingCap() {
+        recordingCapTimer?.invalidate()
+        let token = sessionToken
+        let cap = TimeInterval(max(1, UserPreferences.shared.maximumRecordingSeconds)) + 2.0
+        recordingCapTimer = Timer.scheduledTimer(withTimeInterval: cap, repeats: false) { [weak self] _ in
+            guard let self, self.isActive(token), self.stage == .recording else { return }
+            Log.coordinator.warning("Recording cap fired — no key-release arrived; finalizing session so the pill/mic can't hang.")
+            self.finishRecording(token: token)
+        }
+    }
+
+    private func stopRecordingCap() {
+        recordingCapTimer?.invalidate()
+        recordingCapTimer = nil
+    }
+
     private func finishRecording(token: UUID) {
+        stopRecordingCap()
         do {
             guard let result = try audio.stopRecording() else {
                 fail(with: DictationError.audioCaptureFailed("Recording produced no audio"), token: token)
@@ -167,6 +197,8 @@ final class DictationCoordinator: ObservableObject {
         idleResetWork = nil
         watchdogTimer?.invalidate()
         watchdogTimer = nil
+        recordingCapTimer?.invalidate()
+        recordingCapTimer = nil
         polishFinished = false
     }
 

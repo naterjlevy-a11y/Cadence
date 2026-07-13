@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Carbon.HIToolbox
+import CoreGraphics
 import Combine
 
 protocol HotkeyManagerDelegate: AnyObject {
@@ -47,6 +48,14 @@ final class HotkeyManager {
     /// never arrives within the double-tap window.
     private var pendingFinalizeWorkItem: DispatchWorkItem?
 
+    /// Polls the physical key state while a HOLD recording is active. NSEvent
+    /// global monitors can silently drop a key-release (Space switch, secure
+    /// input field, monitor hiccup) — when that happens the release never
+    /// arrives, recording never stops, and the pill hangs forever. This is the
+    /// safety net: if the key is physically up but we still think we're
+    /// holding, we finalize ourselves.
+    private var keyStateWatchdog: Timer?
+
     init() {
         NotificationCenter.default.addObserver(
             self,
@@ -70,6 +79,7 @@ final class HotkeyManager {
     /// starts a fresh session cleanly.
     func userCancelledExternally() {
         isRecording = false
+        stopKeyStateWatchdog()
         lastKeyDownTime = nil
         lastTapTime = nil
         if hybridLatched {
@@ -143,6 +153,7 @@ final class HotkeyManager {
         if isRecording && ev.type == .keyDown && keyCode == kVK_Escape {
             Log.hotkey.info("Escape pressed during recording -> cancelling")
             isRecording = false
+            stopKeyStateWatchdog()
             lastKeyDownTime = nil
             lastTapTime = nil
             hybridLatched = false
@@ -346,14 +357,110 @@ final class HotkeyManager {
         guard !isRecording else { return }
         isRecording = true
         Log.hotkey.info("Recording start (mode=\(self.activationMode.rawValue, privacy: .public))")
+        startKeyStateWatchdog()
         DispatchQueue.main.async { [weak self] in self?.delegate?.hotkeyDidPress() }
     }
 
     private func stopRecording() {
         guard isRecording else { return }
         isRecording = false
+        stopKeyStateWatchdog()
         Log.hotkey.info("Recording stop (mode=\(self.activationMode.rawValue, privacy: .public))")
         DispatchQueue.main.async { [weak self] in self?.delegate?.hotkeyDidRelease() }
+    }
+
+    // MARK: - Key-state watchdog (recovers from dropped key-release events)
+
+    /// Consecutive polls that read the PTT key as "up". We require two in a row
+    /// (~0.4s) before force-finalizing, so a single transient never kills a
+    /// real hold.
+    private var consecutiveKeyUpReads = 0
+
+    /// When the current hold-recording began. The watchdog only force-finalizes
+    /// after this much elapsed, so it can never interfere with sub-second
+    /// tap / double-tap-to-latch timing in hybrid mode — it only ever rescues a
+    /// genuine long hold whose release event was dropped.
+    private var holdRecordingStartedAt: Date?
+    private let watchdogMinHold: TimeInterval = 1.0
+
+    /// Reads whether the configured PTT key is *physically* down right now,
+    /// using the correct API per key type. `CGEventSource.keyState` is only
+    /// reliable for regular (F-)keys; for modifier and fn keys it under-reports
+    /// (fn especially reads "up" while held), so we read the live modifier
+    /// flags instead. Returns nil for keys we can't reliably poll (Caps Lock is
+    /// a stateful toggle, not a hold).
+    private func isPTTKeyPhysicallyDown() -> Bool? {
+        let flags = NSEvent.modifierFlags
+        switch key {
+        case .rightControl: return flags.contains(.control)
+        case .rightOption:  return flags.contains(.option)
+        case .fnGlobe:      return flags.contains(.function)
+        case .capsLock:     return nil
+        case .f5:  return CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(kVK_F5))
+        case .f6:  return CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(kVK_F6))
+        case .f13: return CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(kVK_F13))
+        case .f14: return CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(kVK_F14))
+        case .f15: return CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(kVK_F15))
+        case .custom:
+            return customKeyCode >= 0
+                ? CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(customKeyCode))
+                : nil
+        }
+    }
+
+    /// Only hold-style sessions should be force-finalized when the key lifts.
+    /// A latched hybrid session or a double-tap toggle is intentionally
+    /// hands-free, so the key being up is expected — don't kill those.
+    private var recordingIsHoldStyle: Bool {
+        switch activationMode {
+        case .holdToTalk: return true
+        case .hybrid:     return hybridStartedFromHold && !hybridLatched
+        case .doubleTapToggle: return false
+        }
+    }
+
+    private func startKeyStateWatchdog() {
+        stopKeyStateWatchdog()
+        // Only arm for keys we can poll reliably.
+        guard isPTTKeyPhysicallyDown() != nil else { return }
+        consecutiveKeyUpReads = 0
+        holdRecordingStartedAt = Date()
+        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+            self?.checkKeyStillHeld()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        keyStateWatchdog = timer
+    }
+
+    private func stopKeyStateWatchdog() {
+        keyStateWatchdog?.invalidate()
+        keyStateWatchdog = nil
+        consecutiveKeyUpReads = 0
+        holdRecordingStartedAt = nil
+    }
+
+    private func checkKeyStillHeld() {
+        guard isRecording, recordingIsHoldStyle else { return }
+        // Never fire before the minimum-hold floor — this keeps us clear of
+        // sub-second tap / latch timing in hybrid mode.
+        if let started = holdRecordingStartedAt,
+           Date().timeIntervalSince(started) < watchdogMinHold {
+            consecutiveKeyUpReads = 0
+            return
+        }
+        // Unknown state (nil) is treated as "still held" — never force-stop on
+        // an ambiguous read.
+        guard isPTTKeyPhysicallyDown() == false else {
+            consecutiveKeyUpReads = 0
+            return
+        }
+        consecutiveKeyUpReads += 1
+        guard consecutiveKeyUpReads >= 2 else { return }
+        Log.hotkey.warning("Key-state watchdog: PTT key read as up on \(self.consecutiveKeyUpReads, privacy: .public) consecutive polls but session still recording — finalizing (a release event was dropped).")
+        lastKeyDownTime = nil
+        lastTapTime = nil
+        hybridStartedFromHold = false
+        stopRecording()
     }
 }
 

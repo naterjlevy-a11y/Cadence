@@ -181,8 +181,11 @@ final class DestinationRegistry {
                 pasteDelaySeconds: 0.6,
                 enabled: true,
                 inputFieldHints: ["ProseMirror", "main-input"],
-                customUserAliases: [],
-                focusInputShortcut: "cmd+/"
+                customUserAliases: []
+                // NOTE: no focusInputShortcut. Claude auto-focuses its composer
+                // when the window activates, and Cmd+/ (a natural guess for
+                // "focus input") actually opens Claude's keyboard-shortcuts
+                // panel — so sending it popped that panel on every route.
             ),
             Destination(
                 id: "chatgpt",

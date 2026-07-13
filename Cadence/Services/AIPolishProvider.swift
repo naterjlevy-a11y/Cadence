@@ -296,7 +296,9 @@ final class AIPolishProvider {
                     )
                     return
                 }
-                Log.cleanup.error("AI polish HTTP \(status, privacy: .public): \(bodyString.prefix(200), privacy: .public)")
+                // Log the status only — the response body can echo dictated
+                // content, so keep it out of the (persisted) unified log.
+                Log.cleanup.error("AI polish HTTP \(status, privacy: .public)")
                 completion(.success(originalText))
                 return
             }
