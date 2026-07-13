@@ -4,8 +4,14 @@
 # Runs entirely locally (no GitHub Actions needed).
 #
 # Prereqs (one-time, already done):
-#   • "Developer ID Application: … (T4LW233MUP)" in the login keychain
-#   • notarytool keychain profile "cadence-notary" (mnl@sfu.ca / T4LW233MUP)
+#   • A "Developer ID Application" certificate in the login keychain
+#   • A notarytool keychain profile (Apple ID + Team ID) stored locally
+#
+# Signing identity is read from the environment so no personal identifiers
+# live in the repo. Set these in your shell (or a gitignored .env.release):
+#   export CADENCE_TEAM_ID="XXXXXXXXXX"
+#   export CADENCE_SIGN_ID="Developer ID Application: Your Name (XXXXXXXXXX)"
+#   export CADENCE_NOTARY_PROFILE="cadence-notary"
 #
 # Usage:  scripts/release.sh            # uses version from project.yml
 #         scripts/release.sh 0.1.1      # override version
@@ -15,9 +21,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
-TEAM_ID="T4LW233MUP"
-SIGN_ID="Developer ID Application: MICHELLE NANCY LEVY (${TEAM_ID})"
-NOTARY_PROFILE="cadence-notary"
+# Pull local defaults if present (gitignored), then env overrides.
+[ -f "$(dirname "$0")/../.env.release" ] && source "$(dirname "$0")/../.env.release"
+
+TEAM_ID="${CADENCE_TEAM_ID:?Set CADENCE_TEAM_ID (see header)}"
+SIGN_ID="${CADENCE_SIGN_ID:?Set CADENCE_SIGN_ID (see header)}"
+NOTARY_PROFILE="${CADENCE_NOTARY_PROFILE:-cadence-notary}"
 SCHEME="Cadence"
 APP_NAME="Cadence"
 

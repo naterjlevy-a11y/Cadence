@@ -4,13 +4,24 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 
-# Local cloud config (real Supabase keys)
-Mellotron/Resources/CloudConfig.plist
+# Local cloud config (Supabase / Stripe / Sentry keys — never commit)
+Cadence/Resources/CloudConfig.plist
+
+# Build artifacts / distributables
+dist/
+*.dmg
 
 # Env / secrets
 .env
 .env.*
 !.env.example
+
+# Signing material (defense-in-depth — must never be committed)
+*.p8
+*.p12
+*.cer
+*.mobileprovision
+*.pem
 
 # Cloudflare
 cloud/worker/node_modules/
