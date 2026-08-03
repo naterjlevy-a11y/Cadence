@@ -17,7 +17,7 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.1.1"
     CURRENT_PROJECT_VERSION: "1"
     PRODUCT_BUNDLE_IDENTIFIER: com.natelevy.cadence
     # Add your Apple ID in Xcode → Settings → Accounts, then pick your Personal Team
@@ -76,6 +76,14 @@ targets:
         NSSupportsSuddenTermination: false
         CFBundlePackageType: APPL
         LSApplicationCategoryType: public.app-category.productivity
+        # Bind the bundle version to the build settings. XcodeGen defaults these
+        # to 1.0 / 1 when unset, so every release shipped reporting "1.0" no
+        # matter what version the DMG was named. Sparkle decides whether an
+        # update is newer by comparing CFBundleShortVersionString, so it could
+        # never have offered one; Sentry's release tag was wrong for the same
+        # reason.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         # Custom URL scheme so OAuth providers (Google, GitHub) can redirect
         # back into Cadence after the user signs in via a browser.
         CFBundleURLTypes:

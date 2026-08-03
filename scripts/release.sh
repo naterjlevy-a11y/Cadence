@@ -34,6 +34,9 @@ VERSION="${1:-$(grep 'MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"(
 DIST="$ROOT/dist"
 DERIVED="$ROOT/build/ReleaseDerived"
 DMG="$DIST/${APP_NAME}-${VERSION}.dmg"
+# Monotonic build number so Sparkle can always order two builds, even if the
+# marketing version is reused during testing.
+BUILD_NUMBER="${CADENCE_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
 
 echo "▸ Cadence ${VERSION} — release build"
 rm -rf "$DIST" "$DERIVED"
@@ -44,8 +47,15 @@ ENTITLEMENTS="$ROOT/Cadence/Resources/Cadence.entitlements"
 echo "▸ Regenerating project + building Release…"
 xcodegen generate >/dev/null
 # Build without injecting the debug get-task-allow entitlement; we re-sign below.
+# MARKETING_VERSION is passed through so a version argument actually reaches
+# the bundle. Previously it only renamed the DMG, and Info.plist hardcoded
+# CFBundleShortVersionString=1.0 — so every release reported the same version.
+# Sparkle compares that string to decide whether an update is newer, so auto
+# update could never have fired.
 xcodebuild -project Cadence.xcodeproj -scheme "$SCHEME" \
   -configuration Release -derivedDataPath "$DERIVED" \
+  MARKETING_VERSION="$VERSION" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   CODE_SIGN_STYLE=Manual \
   CODE_SIGN_IDENTITY="$SIGN_ID" \
   DEVELOPMENT_TEAM="$TEAM_ID" \
