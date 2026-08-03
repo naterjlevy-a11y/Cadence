@@ -34,7 +34,10 @@ final class PermissionsManager: ObservableObject {
     func refreshAll() {
         microphone = currentMicrophoneStatus()
         accessibility = currentAccessibilityStatus(prompt: false)
-        inputMonitoring = currentInputMonitoringStatus()
+        // `inputMonitoring` is no longer polled. This ran
+        // `CGPreflightListenEventAccess()` on every tick — every 1s with a
+        // settings or onboarding pane open, every 2s otherwise — for a
+        // permission the app doesn't use and doesn't show anywhere live.
         speechRecognition = currentSpeechRecognitionStatus()
     }
 
@@ -243,7 +246,14 @@ final class PermissionsManager: ObservableObject {
     /// Reset all stale TCC entries at once. Useful for the "Repair all" button.
     @discardableResult
     func resetAllAndReprompt() -> Bool {
-        let services: [TCCKind] = [.microphone, .speech, .accessibility, .inputMonitoring]
+        // Input Monitoring is deliberately absent. The hotkey moved from a
+        // CGEventTap to NSEvent monitors, so nothing in Cadence needs it — but
+        // this list still included it, which meant "Repair all" ran
+        // `tccutil reset ListenEvent`, created a throwaway event tap purely to
+        // register the app in the Input Monitoring list, and opened that pane
+        // in System Settings. A two-permission app was actively asking for a
+        // third one it never uses.
+        let services: [TCCKind] = [.microphone, .speech, .accessibility]
         var allOK = true
         for kind in services {
             if !resetAndReprompt(kind) { allOK = false }

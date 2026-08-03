@@ -5,15 +5,15 @@ import { useEffect, useState } from "react";
 /**
  * Supabase magic links land here (http://localhost:3000/auth/callback#tokens…)
  * because custom URL schemes can't be used directly in email redirects.
- * This page immediately forwards tokens to the Mellotron app via mellotron://
+ * This page immediately forwards tokens to the Cadence app via cadence://
  */
 export default function AuthCallbackPage() {
   const [status, setStatus] = useState<"opening" | "manual">("opening");
-  const [deepLink, setDeepLink] = useState("mellotron://auth/callback");
+  const [deepLink, setDeepLink] = useState("cadence://auth/callback");
   const [missingTokens, setMissingTokens] = useState(false);
 
   useEffect(() => {
-    const target = `mellotron://auth/callback${window.location.search}${window.location.hash}`;
+    const target = `cadence://auth/callback${window.location.search}${window.location.hash}`;
     setDeepLink(target);
 
     const hasTokens =
@@ -35,12 +35,12 @@ export default function AuthCallbackPage() {
     <main className="flex min-h-dvh flex-col items-center justify-center bg-mello-ink px-6 text-center text-mello-paper">
       <div className="max-w-md">
         <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/50">
-          Mellotron sign-in
+          Cadence sign-in
         </p>
         <h1 className="mt-4 font-display text-4xl tracking-tightest">
           {status === "opening" ? (
             <>
-              Opening <span className="italic-display text-mello">Mellotron…</span>
+              Opening <span className="italic-display text-mello">Cadence…</span>
             </>
           ) : (
             <>
@@ -50,8 +50,8 @@ export default function AuthCallbackPage() {
         </h1>
         <p className="mt-4 text-sm leading-relaxed text-white/65">
           {status === "opening"
-            ? "Your browser is handing the session to the Mellotron app. You can close this tab once Mellotron opens."
-            : "If Mellotron didn’t open automatically, click the button below. Make sure Mellotron is installed and running."}
+            ? "Your browser is handing the session to the Cadence app. You can close this tab once Cadence opens."
+            : "If Cadence didn’t open automatically, click the button below. Make sure Cadence is installed and running."}
         </p>
 
         {deepLink && (
@@ -59,13 +59,13 @@ export default function AuthCallbackPage() {
             href={deepLink}
             className="mt-8 inline-flex rounded-2xl bg-mello px-6 py-3 text-base font-semibold text-mello-ink transition hover:bg-mello-glow"
           >
-            Open Mellotron
+            Open Cadence
           </a>
         )}
 
         {missingTokens && (
           <p className="mt-6 text-xs text-white/45">
-            No sign-in tokens were found in this URL. Request a new link from Mellotron → Settings →
+            No sign-in tokens were found in this URL. Request a new link from Cadence → Settings →
             Sign in.
           </p>
         )}

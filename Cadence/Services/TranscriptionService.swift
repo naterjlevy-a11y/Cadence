@@ -415,7 +415,10 @@ final class TranscriptionService {
 
         // Cloud Groq needs a bearer token before we pick the provider — otherwise
         // resolveGroqProvider silently falls through to Apple Speech.
-        let needsCloudSession = prefs.transcriptionProvider == "groq"
+        // Don't reach for a cloud session at all when the user asked to stay
+        // on-device — that would defeat the point of the setting.
+        let needsCloudSession = !prefs.preferOnDeviceTranscription
+            && prefs.transcriptionProvider == "groq"
             && prefs.transcriptionAuthMode != "byok"
             && CloudConfig.shared.isCloudEnabled
             && SecretStore.shared.groqApiKey.isEmpty
@@ -431,6 +434,16 @@ final class TranscriptionService {
 
     /// Resolve the primary provider based on prefs, cloud session, and BYOK key.
     private func resolvePrimary(prefs: UserPreferences) -> TranscriptionProvider {
+        // The Dictation pane's Mode picker binds `preferOnDeviceTranscription`
+        // and labels the on-device option "Nothing leaves your Mac". That flag
+        // used to be read ONLY inside AppleSpeechTranscriptionProvider, while
+        // this switch looked at `transcriptionProvider` (default "groq") — whose
+        // only writer lives in the dead settings hierarchy. Net effect: choosing
+        // "On-device · private" still uploaded the user's audio to the cloud.
+        // The promise in the UI is now the thing that decides.
+        if prefs.preferOnDeviceTranscription {
+            return appleProvider
+        }
         switch prefs.transcriptionProvider {
         case "groq":
             return resolveGroqProvider(prefs: prefs)

@@ -30,38 +30,45 @@ export interface Env {
 const GROQ_TRANSCRIBE = "https://api.groq.com/openai/v1/audio/transcriptions";
 const GROQ_CHAT = "https://api.groq.com/openai/v1/chat/completions";
 const POLISH_MODEL = "llama-3.3-70b-versatile";
+const TRANSCRIBE_MODEL = "whisper-large-v3-turbo";
 const STRIPE_API = "https://api.stripe.com/v1";
+
+/** Groq's own upload ceiling. Reject earlier so we don't pay to find out. */
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+/** Polish has no natural duration, so bill it against the same second-denominated
+ *  meter at a deliberately cheap rate: ~1s per 200 characters, min 1s. */
+const POLISH_SECONDS_PER_CHAR = 1 / 200;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
-      return cors(new Response(null, { status: 204 }));
+      return cors(new Response(null, { status: 204 }), request);
     }
 
     if (url.pathname === "/health") {
-      return cors(json({ ok: true, service: "cadence-api" }));
+      return cors(json({ ok: true, service: "cadence-api" }), request);
     }
 
     if (url.pathname === "/v1/transcribe" && request.method === "POST") {
-      return cors(await handleTranscribe(request, env, ctx));
+      return cors(await handleTranscribe(request, env, ctx), request);
     }
 
     if (url.pathname === "/v1/polish" && request.method === "POST") {
-      return cors(await handlePolish(request, env));
+      return cors(await handlePolish(request, env, ctx), request);
     }
 
     if (url.pathname === "/v1/quota" && request.method === "GET") {
-      return cors(await handleQuota(request, env));
+      return cors(await handleQuota(request, env), request);
     }
 
     if (url.pathname === "/v1/checkout" && request.method === "POST") {
-      return cors(await handleCheckout(request, env));
+      return cors(await handleCheckout(request, env), request);
     }
 
     if (url.pathname === "/v1/portal" && request.method === "POST") {
-      return cors(await handlePortal(request, env));
+      return cors(await handlePortal(request, env), request);
     }
 
     if (url.pathname === "/embedded-checkout" && request.method === "GET") {
@@ -72,7 +79,7 @@ export default {
       return await handleStripeWebhook(request, env);
     }
 
-    return cors(json({ error: "not_found" }, 404));
+    return cors(json({ error: "not_found" }, 404), request);
   },
 };
 
@@ -86,74 +93,100 @@ async function handleTranscribe(
     return json({ error: "expected_multipart" }, 400);
   }
 
-  const auth = request.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return json({ error: "unauthorized" }, 401);
+  // Verified auth. `decodeJwtUserId` only decoded the payload — it checked no
+  // signature and no expiry, so a hand-written three-segment string passed.
+  // `authenticate` round-trips to /auth/v1/user, which actually verifies.
+  const user = await authenticate(request, env);
+  if (!user) return json({ error: "unauthorized" }, 401);
+  const userId = user.id;
 
-  // Single Supabase round-trip: PostgREST with the user's JWT validates auth
-  // AND fetches their quota row via RLS (auth.uid() = id). One call replaces
-  // /auth/v1/user + GET /rest/v1/profiles.
-  const userId = decodeJwtUserId(token);
-  if (!userId) return json({ error: "invalid_token" }, 401);
-
-  // Buffer body BEFORE awaiting anything else so we can fan out without
-  // racing the request stream lifecycle.
-  const audioBody = await request.arrayBuffer();
-  const audioSeconds = Math.max(1, Math.ceil((audioBody.byteLength / 32_000) * 0.7));
-
-  // Parallel: kick off quota check AND Groq request together. If quota
-  // exceeded, we discard the Groq response. ~400ms saved per call.
-  const freeLimit = parseInt(env.FREE_MONTHLY_SECONDS ?? "10800", 10);
-  const quotaPromise = fetchProfileWithJWT(env, token).catch(() => ({
-    plan: "free",
-    monthly_seconds_used: 0,
-  }));
-  const groqPromise = fetch(GROQ_TRANSCRIBE, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.GROQ_API_KEY}`,
-      "Content-Type": contentType,
-    },
-    body: audioBody,
-  });
-
-  const [profile, groqRes] = await Promise.all([quotaPromise, groqPromise]);
-  const limit = profile.plan === "pro" ? 999_999 : freeLimit;
-  const used = profile.monthly_seconds_used ?? 0;
-
-  if (used >= limit) {
+  // Quota is now checked BEFORE Groq is called. Previously both were fired in
+  // parallel and the 429 was returned after Groq had already transcribed and
+  // billed us, so an over-quota client could loop indefinitely at our expense.
+  const quota = await checkQuotaStrict(env, userId);
+  if (!quota.ok) {
+    return json({ error: "quota_unavailable", message: "Try again shortly." }, 503);
+  }
+  if (!quota.allowed) {
     return json(
       {
         error: "quota_exceeded",
         message: "Monthly transcription limit reached. Upgrade or use your own Groq key in Settings.",
-        used_seconds: used,
-        limit_seconds: limit,
+        used_seconds: quota.usedSeconds,
+        limit_seconds: quota.limitSeconds,
       },
       429
     );
   }
 
+  // Rebuild the upload server-side rather than forwarding the client's body
+  // verbatim. This pins the model (a client could otherwise select a costlier
+  // one) and forces verbose_json so Groq returns the true audio `duration` —
+  // billing used to be derived from uploaded byte count, which a client could
+  // deflate ~30x just by lowering its bitrate.
+  let inbound: FormData;
+  try {
+    inbound = await request.formData();
+  } catch {
+    return json({ error: "expected_multipart" }, 400);
+  }
+  // This tsconfig types FormData.get() as `string`, but the Workers runtime
+  // hands back a File for a binary part. Narrow structurally rather than
+  // trusting the lib types.
+  const part = inbound.get("file") as unknown;
+  if (!part || typeof part === "string") return json({ error: "missing_file" }, 400);
+  const file = part as Blob & { name?: string };
+  if (typeof file.size !== "number") return json({ error: "missing_file" }, 400);
+  if (file.size > MAX_AUDIO_BYTES) return json({ error: "audio_too_large" }, 413);
+
+  const outbound = new FormData();
+  outbound.set("file", file as Blob, file.name || "audio.wav");
+  outbound.set("model", TRANSCRIBE_MODEL);
+  outbound.set("response_format", "verbose_json");
+  const language = inbound.get("language");
+  if (typeof language === "string" && language) outbound.set("language", language);
+
+  const groqRes = await fetch(GROQ_TRANSCRIBE, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    body: outbound,
+  });
+
   if (!groqRes.ok) {
-    const body = await groqRes.text();
-    console.error("Groq error", groqRes.status, body.slice(0, 300));
-    return json(
-      { error: "upstream_failed", status: groqRes.status, detail: body.slice(0, 200) },
-      502
-    );
+    console.error("Groq error", groqRes.status, (await groqRes.text()).slice(0, 300));
+    return json({ error: "upstream_failed", status: groqRes.status }, 502);
   }
 
-  const data = await groqRes.json();
+  const data = (await groqRes.json()) as { duration?: number };
 
-  // Fire-and-forget usage write — doesn't block the response (~150ms saved).
-  ctx.waitUntil(recordUsage(env, userId, audioSeconds));
+  // Bill the duration Groq measured, not anything the client told us.
+  const billedSeconds = Math.max(1, Math.ceil(data.duration ?? 1));
+  ctx.waitUntil(recordUsage(env, userId, billedSeconds));
 
   return json(data);
 }
 
-async function handlePolish(request: Request, env: Env): Promise<Response> {
-  const auth = request.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!token || !decodeJwtUserId(token)) return json({ error: "unauthorized" }, 401);
+async function handlePolish(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<Response> {
+  // Was: `if (!token || !decodeJwtUserId(token))` — an unverified payload
+  // decode, so any well-formed string authenticated. This endpoint had no
+  // quota accounting of any kind, making it an open, uncounted LLM proxy.
+  const user = await authenticate(request, env);
+  if (!user) return json({ error: "unauthorized" }, 401);
+
+  const quota = await checkQuotaStrict(env, user.id);
+  if (!quota.ok) {
+    return json({ error: "quota_unavailable", message: "Try again shortly." }, 503);
+  }
+  if (!quota.allowed) {
+    // Polish is a convenience, so degrade instead of erroring: the app falls
+    // back to its local rule-based cleanup when it gets the text unchanged.
+    const body = (await request.json().catch(() => ({}))) as { text?: string };
+    return json({ text: (body.text ?? "").trim() });
+  }
 
   let payload: { text?: string; flavor?: string };
   try {
@@ -207,42 +240,82 @@ async function handlePolish(request: Request, env: Env): Promise<Response> {
     choices?: { message?: { content?: string } }[];
   };
   const polished = data.choices?.[0]?.message?.content?.trim();
+
+  // Meter it. Previously every polish call was free spend on our Groq key,
+  // even for legitimate signed-in users.
+  ctx.waitUntil(
+    recordUsage(env, user.id, Math.max(1, Math.ceil(text.length * POLISH_SECONDS_PER_CHAR)))
+  );
+
   return json({ text: polished && polished.length > 0 ? polished : text });
 }
 
 /**
- * Decode the `sub` claim from a Supabase JWT without verifying signature.
- * Verification happens at PostgREST when we use the JWT to fetch profiles
- * (RLS rejects bad signatures). This is a fast pre-check to extract the
- * user id without a network round-trip.
+ * Quota lookup that FAILS CLOSED.
+ *
+ * The previous implementation (`fetchProfileWithJWT`) returned a synthetic
+ * `{plan:"free", monthly_seconds_used:0}` whenever PostgREST responded with a
+ * non-2xx — which is exactly what a forged JWT produced. Zero usage always
+ * satisfies the limit check, so a bad token bought unlimited transcription.
+ *
+ * Callers must treat `ok === false` as "refuse the request", never as "allow".
  */
-function decodeJwtUserId(jwt: string): string | null {
-  const parts = jwt.split(".");
-  if (parts.length !== 3) return null;
-  try {
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return typeof payload.sub === "string" ? payload.sub : null;
-  } catch {
-    return null;
-  }
+interface StrictQuota {
+  ok: boolean;
+  allowed: boolean;
+  plan: string;
+  usedSeconds: number;
+  limitSeconds: number;
 }
 
-async function fetchProfileWithJWT(env: Env, jwt: string): Promise<Profile> {
-  // PostgREST validates the JWT and applies RLS — bad JWT = 401, valid JWT =
-  // exactly the user's own profile row.
-  const url = `${env.SUPABASE_URL}/rest/v1/profiles?select=plan,monthly_seconds_used`;
-  const res = await fetch(url, {
-    headers: {
-      apikey: env.SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${jwt}`,
-      Accept: "application/json",
-    },
-  });
-  if (!res.ok) {
-    return { plan: "free", monthly_seconds_used: 0 };
+async function checkQuotaStrict(env: Env, userId: string): Promise<StrictQuota> {
+  const deny: StrictQuota = {
+    ok: false,
+    allowed: false,
+    plan: "free",
+    usedSeconds: 0,
+    limitSeconds: 0,
+  };
+
+  const url =
+    `${env.SUPABASE_URL}/rest/v1/profiles` +
+    `?id=eq.${encodeURIComponent(userId)}&select=plan,monthly_seconds_used`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { ...supabaseServiceHeaders(env), Accept: "application/json" },
+    });
+  } catch (err) {
+    console.error("quota lookup threw", err);
+    return deny;
   }
+
+  if (!res.ok) {
+    console.error("quota lookup failed", res.status);
+    return deny;
+  }
+
   const rows = (await res.json()) as Profile[];
-  return rows[0] ?? { plan: "free", monthly_seconds_used: 0 };
+  const profile = rows[0];
+  // No row for a verified user means the signup trigger did not run. Refuse
+  // rather than inventing a free profile we cannot meter.
+  if (!profile) {
+    console.error("no profile row for verified user");
+    return deny;
+  }
+
+  const freeLimit = parseInt(env.FREE_MONTHLY_SECONDS ?? "10800", 10);
+  const limit = profile.plan === "pro" ? Number.MAX_SAFE_INTEGER : freeLimit;
+  const used = profile.monthly_seconds_used ?? 0;
+
+  return {
+    ok: true,
+    allowed: used < limit,
+    plan: profile.plan,
+    usedSeconds: used,
+    limitSeconds: limit,
+  };
 }
 
 async function handleQuota(request: Request, env: Env): Promise<Response> {
@@ -615,15 +688,27 @@ async function getProfileFull(env: Env, userId: string): Promise<FullProfile> {
 
 async function recordUsage(env: Env, userId: string, seconds: number): Promise<void> {
   const url = `${env.SUPABASE_URL}/rest/v1/rpc/increment_transcription_seconds`;
-  await fetch(url, {
-    method: "POST",
-    headers: {
-      ...supabaseServiceHeaders(env),
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify({ p_user_id: userId, p_seconds: seconds }),
-  });
+  // One retry: this write is the only thing standing between the free tier and
+  // unlimited use, and it previously ignored the response entirely — a 5xx or a
+  // rate-limit silently dropped the usage and the meter never moved.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          ...supabaseServiceHeaders(env),
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({ p_user_id: userId, p_seconds: seconds }),
+      });
+      if (res.ok) return;
+      console.error("recordUsage failed", res.status, "attempt", attempt);
+    } catch (err) {
+      console.error("recordUsage threw", err, "attempt", attempt);
+    }
+  }
+  console.error("recordUsage GAVE UP — unmetered usage", { userId, seconds });
 }
 
 async function setPlan(
@@ -640,9 +725,12 @@ async function setPlan(
       "Content-Type": "application/json",
       Prefer: "return=minimal",
     },
+    // Never clear stripe_customer_id. Passing "" on downgrade used to null it,
+    // which broke /v1/portal (no way to resubscribe or manage billing) and made
+    // a re-subscribe mint a SECOND Stripe customer for the same person.
     body: JSON.stringify({
       plan,
-      stripe_customer_id: stripeCustomerId || null,
+      ...(stripeCustomerId ? { stripe_customer_id: stripeCustomerId } : {}),
       updated_at: new Date().toISOString(),
     }),
   });
@@ -665,9 +753,26 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function cors(response: Response): Response {
+/**
+ * The Mac app is a native client: it sends no Origin and ignores CORS entirely,
+ * so it needs nothing from this function. The wildcard that used to live here
+ * only ever benefited browsers — which meant any page on the internet could
+ * drive /v1/transcribe and /v1/polish directly from JS.
+ *
+ * Echo an allowed origin or send no CORS headers at all.
+ */
+const ALLOWED_ORIGINS = new Set([
+  "http://localhost:3000",
+  "http://localhost:3001",
+]);
+
+function cors(response: Response, request?: Request): Response {
+  const origin = request?.headers.get("origin");
+  if (!origin || !ALLOWED_ORIGINS.has(origin)) return response;
+
   const headers = new Headers(response.headers);
-  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Vary", "Origin");
   headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
   return new Response(response.body, { status: response.status, headers });

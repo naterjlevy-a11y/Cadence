@@ -11,6 +11,11 @@ final class RecordingIndicatorController {
     private var hostingView: NSHostingView<RecordingIndicatorView>?
     private var cancellables: Set<AnyCancellable> = []
     private var hideWorkItem: DispatchWorkItem?
+    /// True while a hide fade is in flight. Keeps `hide()` idempotent and lets
+    /// `show()` reclaim a panel that's mid-fade.
+    private var isHiding = false
+    /// Guarantees teardown if the fade's completion handler never fires.
+    private var forceHideFallback: DispatchWorkItem?
     /// Maximum time the pill is allowed to stay visible in any non-recording
     /// stage. If the coordinator gets wedged we hide on our own rather than
     /// leaving a ghost pill floating on screen forever.
@@ -76,10 +81,18 @@ final class RecordingIndicatorController {
             show()
             scheduleHide(after: 0.4)
         case .recording:
-            // Hard reset both timers — recording must never auto-hide.
             hideWorkItem?.cancel()
-            safetyHideWork?.cancel()
             show()
+            // `.recording` used to cancel BOTH timers and arm nothing, so it was
+            // the one stage with no ceiling whatsoever. If a key-release event
+            // was ever dropped upstream, the coordinator stayed in .recording
+            // and this pill floated on screen indefinitely — the "sometimes it
+            // stays there when I'm done talking" glitch.
+            //
+            // A hold can legitimately run to the user's max recording length, so
+            // the ceiling is that plus slack. Nothing is exempt now.
+            let cap = TimeInterval(max(1, UserPreferences.shared.maximumRecordingSeconds))
+            armSafetyHide(after: cap + 5.0)
         default:
             // Any other in-flight stage. Keep the pill visible but arm a
             // safety net so we never get stuck >15s in a "processing" state.
@@ -121,6 +134,19 @@ final class RecordingIndicatorController {
 
     private func show() {
         if let window {
+            // A hide fade may be in flight. Kill it and restore the panel to a
+            // known-good state — previously this returned early without
+            // touching the animation, so the pending fade would complete and
+            // tear the pill down while we were trying to show it.
+            isHiding = false
+            forceHideFallback?.cancel()
+            forceHideFallback = nil
+            NSAnimationContext.beginGrouping()
+            NSAnimationContext.current.duration = 0
+            window.animator().alphaValue = 1
+            NSAnimationContext.endGrouping()
+            window.alphaValue = 1
+            positionPanel(window)
             if !window.isVisible { window.orderFrontRegardless() }
             return
         }
@@ -244,19 +270,46 @@ final class RecordingIndicatorController {
     }
 
     private func hide() {
-        guard let window else { return }
+        guard let window, !isHiding else { return }
+        isHiding = true
         let origin = window.frame.origin
         let target = NSPoint(x: origin.x, y: origin.y - 14)
+
+        // The completion handler used to be the ONLY thing that called
+        // orderOut. AppKit does not guarantee it runs — a superseded or
+        // interrupted animation drops it — and when that happened the panel was
+        // simply left on screen forever. This fallback guarantees teardown
+        // regardless of what the animator does.
+        let fallback = DispatchWorkItem { [weak self] in
+            guard let self, self.isHiding else { return }
+            Log.ui.warning("Indicator hide animation never completed — forcing teardown")
+            self.teardownPanel(window)
+        }
+        forceHideFallback?.cancel()
+        forceHideFallback = fallback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: fallback)
+
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.22
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 0.6, 1)
             window.animator().alphaValue = 0
             window.animator().setFrameOrigin(target)
         }, completionHandler: { [weak self] in
-            window.orderOut(nil)
-            self?.window = nil
-            self?.hostingView = nil
+            guard let self, self.isHiding else { return }
+            self.teardownPanel(window)
         })
+    }
+
+    /// Single teardown path, safe to call more than once.
+    private func teardownPanel(_ panel: NSPanel) {
+        forceHideFallback?.cancel()
+        forceHideFallback = nil
+        isHiding = false
+        panel.orderOut(nil)
+        if window === panel {
+            window = nil
+            hostingView = nil
+        }
     }
 }
 

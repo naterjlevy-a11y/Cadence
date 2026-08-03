@@ -45,28 +45,44 @@ final class BillingService: ObservableObject {
 
     // MARK: - Upgrade
 
+    // Both of these used to read `AuthService.shared.accessToken` raw.
+    // `ensureCloudSessionReady` only checks that SOME token string exists — it
+    // never inspects `exp` — so after the app had been open an hour (it's a
+    // menu-bar app, that's every day) the Worker's `authenticate()` rejected the
+    // expired JWT and the user saw "Couldn't start checkout (HTTP 401)".
+    // These are the two most revenue-critical calls in the app, and they were
+    // the ones bypassing the refresh gate.
+
     func startUpgrade() {
         phase = .loading
         showEmbeddedCheckout = false
-        AuthService.shared.ensureCloudSessionReady { [weak self] ready in
-            guard let self else { return }
-            Task { @MainActor in
-                guard ready, let token = AuthService.shared.accessToken, !token.isEmpty else {
-                    self.phase = .failed("Sign in to Cadence Cloud first.")
-                    return
+        AuthService.shared.ensureCloudSessionReady { [weak self] _ in
+            guard self != nil else { return }
+            AuthService.shared.withFreshToken { [weak self] token in
+                guard let self else { return }
+                Task { @MainActor in
+                    guard let token, !token.isEmpty else {
+                        self.phase = .failed("Sign in to Cadence Cloud first.")
+                        return
+                    }
+                    await self.createEmbeddedCheckout(token: token)
                 }
-                await self.createEmbeddedCheckout(token: token)
             }
         }
     }
 
     func openManageSubscription() {
         phase = .loading
-        guard let token = AuthService.shared.accessToken, !token.isEmpty else {
-            phase = .failed("Sign in to manage your subscription.")
-            return
+        AuthService.shared.withFreshToken { [weak self] token in
+            guard let self else { return }
+            Task { @MainActor in
+                guard let token, !token.isEmpty else {
+                    self.phase = .failed("Sign in to manage your subscription.")
+                    return
+                }
+                await self.createPortalSession(token: token)
+            }
         }
-        Task { await createPortalSession(token: token) }
     }
 
     func handleCheckoutComplete() {

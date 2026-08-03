@@ -116,6 +116,9 @@ final class CadenceApp: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         hotkeys.stop()
         menuBar.remove()
+        // The audio engine was never torn down — `shutDown()` had no callers at
+        // all, so the tap stayed installed for the life of the process.
+        coordinator.shutDownMic()
     }
 
     // MARK: - Main menu (hidden, exists only for Cmd+V routing)

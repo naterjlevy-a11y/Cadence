@@ -7,10 +7,22 @@ import AppKit
 /// clean rows (label left, control right). No explainer walls, no wizards.
 struct CadenceSettingsRootView: View {
     @State private var tab: Pane = .general
+    @ObservedObject private var nav = SettingsNavigation.shared
 
     enum Pane: String, CaseIterable, Identifiable {
         case general, dictation, destinations, history, account
         var id: String { rawValue }
+
+        /// Maps the tab ids used by `present(tabId:)` onto this enum. Most match
+        /// by raw value; the older id for destinations was `routingDestinations`.
+        init?(tabId: String) {
+            switch tabId {
+            case "routingDestinations": self = .destinations
+            default:
+                guard let p = Pane(rawValue: tabId) else { return nil }
+                self = p
+            }
+        }
 
         var title: String {
             switch self {
@@ -43,6 +55,13 @@ struct CadenceSettingsRootView: View {
         .background(Color.melloInk)
         .cadenceThemed()
         .preferredColorScheme(.dark)
+        // `present(tabId:)` writes SettingsNavigation.shared, but the live root
+        // view never observed it — only the dead SettingsRootView did. So menu
+        // bar → "History" (and the permission-repair route) opened Settings on
+        // whatever pane was last shown, always General on a fresh launch.
+        .onReceive(nav.$selectedTabId) { id in
+            if let pane = Pane(tabId: id) { tab = pane }
+        }
     }
 
     private var sidebar: some View {

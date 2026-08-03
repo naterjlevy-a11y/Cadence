@@ -326,7 +326,10 @@ final class SecretStore {
         if updateStatus == errSecItemNotFound {
             var add = query
             add[kSecValueData as String] = data
-            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            // ...ThisDeviceOnly keeps these out of Keychain migration and
+            // encrypted backups. Without it a user's tokens can follow them off
+            // this machine, which is not what "stays on your Mac" implies.
+            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             let addStatus = SecItemAdd(add as CFDictionary, nil)
             if addStatus != errSecSuccess {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus),

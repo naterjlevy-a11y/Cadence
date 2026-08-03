@@ -56,6 +56,8 @@ final class AuthService: NSObject, ObservableObject {
     private var didRestoreSession = false
     private var cloudBootstrapInFlight = false
     private var pendingCloudBootstrap: [(Bool) -> Void] = []
+    private var refreshInFlight = false
+    private var pendingRefreshWaiters: [(Bool) -> Void] = []
 
     private override init() {
         super.init()
@@ -564,9 +566,18 @@ final class AuthService: NSObject, ObservableObject {
         userId = nil
         userEmail = nil
         plan = "free"
+        // These were left untouched, so the Account pane kept rendering the
+        // previous user's "N min left" bar after signing out.
+        quotaUsedSeconds = 0
+        quotaLimitSeconds = 0
         pendingOTPEmail = nil
         refreshTimer?.invalidate()
         refreshTimer = nil
+        // Drop any in-flight coalesced work so it can't resurrect the session.
+        cloudBootstrapInFlight = false
+        pendingCloudBootstrap.removeAll()
+        refreshInFlight = false
+        pendingRefreshWaiters.removeAll()
         Log.app.info("Signed out of Cadence Cloud")
     }
 
@@ -600,8 +611,12 @@ final class AuthService: NSObject, ObservableObject {
         if !accessTokenNeedsRefresh {
             completion(accessToken); return
         }
-        refreshSessionIfNeeded { [weak self] _ in
-            completion(self?.accessToken)
+        // This used to ignore the Bool and hand back `accessToken` regardless —
+        // i.e. the SAME expired token it had just failed to refresh. Callers
+        // then sent a dead JWT and got a 401 they couldn't distinguish from any
+        // other failure. Nil means "no usable token", and callers treat it so.
+        refreshSessionIfNeeded { [weak self] ok in
+            completion(ok ? self?.accessToken : nil)
         }
     }
 
@@ -610,6 +625,17 @@ final class AuthService: NSObject, ObservableObject {
         guard !refresh.isEmpty, let base = CloudConfig.shared.supabaseURL else {
             completion?(false); return
         }
+
+        // Coalesce concurrent refreshes, the same way `ensureCloudSessionReady`
+        // already does for anonymous bootstrap. Supabase GoTrue ROTATES refresh
+        // tokens, so two simultaneous POSTs with the same token meant the second
+        // came back "Invalid Refresh Token: Already Used" — and reuse-detection
+        // can revoke the whole token family, silently signing the user out with
+        // no UI to recover. Opening Settings → Account during a dictation was
+        // enough to trigger it.
+        if let completion { pendingRefreshWaiters.append(completion) }
+        guard !refreshInFlight else { return }
+        refreshInFlight = true
         var req = URLRequest(url: base.appendingPathComponent("auth/v1/token"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -619,7 +645,25 @@ final class AuthService: NSObject, ObservableObject {
 
         URLSession.shared.dataTask(with: req) { [weak self] data, response, _ in
             DispatchQueue.main.async {
-                self?.applyAuthResponse(data: data, response: response, source: .refresh) { ok in completion?(ok) }
+                guard let self else { return }
+                self.applyAuthResponse(data: data, response: response, source: .refresh) { ok in
+                    self.refreshInFlight = false
+                    let waiters = self.pendingRefreshWaiters
+                    self.pendingRefreshWaiters.removeAll()
+
+                    // A refresh token that won't refresh is dead — it's been
+                    // rotated, reused, revoked, or simply aged out. Previously
+                    // `isSignedIn` stayed true and the 40-minute timer just kept
+                    // retrying the same dead token forever, so the UI claimed
+                    // "Signed in" while every cloud call 401'd. Surface it.
+                    if !ok, let status = (response as? HTTPURLResponse)?.statusCode,
+                       status == 400 || status == 401 {
+                        Log.app.warning("Refresh token rejected (\(status, privacy: .public)) — signing out")
+                        self.signOut()
+                    }
+
+                    waiters.forEach { $0(ok) }
+                }
             }
         }.resume()
     }

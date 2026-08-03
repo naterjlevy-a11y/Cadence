@@ -152,7 +152,7 @@ final class DictationCoordinator: ObservableObject {
             }
 
             stage = .processingAudio
-            startWatchdog(for: token)
+            startWatchdog(for: token, recordedSeconds: result.duration)
             transcribe(result: result, token: token)
         } catch {
             fail(with: error as? DictationError ?? .audioCaptureFailed(error.localizedDescription), token: token)
@@ -169,6 +169,11 @@ final class DictationCoordinator: ObservableObject {
         stage = .idle
         lastError = nil
         NotificationCenter.default.post(name: .cadenceUserCancelled, object: nil)
+    }
+
+    /// Release the microphone. Called on app quit.
+    func shutDownMic() {
+        audio.shutDown()
     }
 
     func warmUpMic() {
@@ -191,6 +196,10 @@ final class DictationCoordinator: ObservableObject {
         transcription.cancelCurrent()
         AIPolishProvider.shared.cancel()
         AIRoutingProvider.shared.cancel()
+        // The paste retry chain was the one piece of in-flight work this didn't
+        // cancel, so Cmd-V kept firing into the foreground app after the user
+        // had already bailed out.
+        PasteManager.shared.cancelPending()
         polishDeadlineWork?.cancel()
         polishDeadlineWork = nil
         idleResetWork?.cancel()
@@ -206,12 +215,19 @@ final class DictationCoordinator: ObservableObject {
         sessionToken == token
     }
 
-    private func startWatchdog(for token: UUID) {
+    private func startWatchdog(for token: UUID, recordedSeconds: TimeInterval = 0) {
         watchdogTimer?.invalidate()
-        // 8s is generous for Apple Speech + AI polish on short audio. If
-        // we're still in a non-recording, non-terminal stage past that,
-        // something is wedged — bail out and free the UI.
-        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { [weak self] _ in
+        // This was a flat 8s, which was shorter than the network timeouts it
+        // supervises: cloud transcription alone sets timeoutInterval = 25s and
+        // polish 12s. With the default 300s max recording (~9.6MB of 16kHz
+        // mono), the upload could never finish inside 8s, so every long
+        // dictation died on "Took too long. Try again." — and leaked its WAV.
+        //
+        // Budget the stages we actually wait on, plus a slice for upload time
+        // proportional to how much audio there is.
+        let uploadAllowance = min(60.0, recordedSeconds * 0.5)
+        let deadline = 25.0 + 12.0 + 5.0 + uploadAllowance
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: deadline, repeats: false) { [weak self] _ in
             guard let self, self.isActive(token) else { return }
             switch self.stage {
             case .processingAudio, .transcribing, .detectingRoute,
@@ -238,8 +254,12 @@ final class DictationCoordinator: ObservableObject {
         Log.coordinator.info("Stage -> transcribing")
         transcription.transcribe(fileURL: result.fileURL) { [weak self] outcome in
             DispatchQueue.main.async {
+                // Delete the audio BEFORE the liveness guard. This used to sit
+                // below it, so any late response for a superseded session
+                // returned early and left the WAV in /tmp forever — despite the
+                // app promising "audio deleted after transcription".
+                self?.cleanupTempFile(result.fileURL)
                 guard let self, self.isActive(token) else { return }
-                self.cleanupTempFile(result.fileURL)
                 switch outcome {
                 case .success(let r):
                     Log.coordinator.info("Transcription confidence: \(r.confidence, privacy: .public)")

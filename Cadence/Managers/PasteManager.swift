@@ -15,6 +15,22 @@ final class PasteManager {
         let items: [[NSPasteboard.PasteboardType: Data]]
     }
 
+    /// Bumped to abandon an in-flight paste chain.
+    ///
+    /// The retry chain is a series of `asyncAfter` hops spanning up to ~1.2s for
+    /// a 3-attempt web destination. Nothing used to hold or cancel them, and
+    /// `DictationCoordinator.cancel()` only cancelled transcription and polish.
+    /// So a user who hit Escape or Cmd-Tabbed mid-chain still got attempts 2
+    /// and 3 synthesizing Cmd-V into whatever app was now frontmost — and with
+    /// `autoSubmit` on, a Return after it. Dictated text landing in the wrong
+    /// app is bad; dictated text being *sent* from the wrong app is worse.
+    private var generation = 0
+
+    /// Abandon any in-flight paste chain. Safe to call when none is running.
+    func cancelPending() {
+        generation &+= 1
+    }
+
     /// Paste `text` into the frontmost app. Web destinations often need a few
     /// tries because the page may still be loading when we first send Cmd-V.
     /// `focusInputShortcut` (e.g. "cmd+l") is sent BEFORE the paste so the
@@ -46,8 +62,33 @@ final class PasteManager {
 
         let preFocusDelay: TimeInterval = focusInputShortcut == nil ? 0.08 : 0.22
 
+        // Everything below is gated on two things: the chain still being the
+        // current one, and the target app still being frontmost.
+        generation &+= 1
+        let gen = generation
+        let targetApp = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+
+        func stillValid() -> Bool {
+            guard gen == self.generation else {
+                Log.paste.info("Paste chain abandoned — superseded or cancelled")
+                return false
+            }
+            let current = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            guard current == targetApp else {
+                Log.paste.warning("Paste chain aborted — frontmost app changed")
+                return false
+            }
+            return true
+        }
+
         func attemptPaste(remaining: Int) {
             DispatchQueue.main.asyncAfter(deadline: .now() + preFocusDelay) {
+                guard stillValid() else {
+                    self.restoreSnapshot(snapshot, on: pb, after: 0.1)
+                    completion(.failure(DictationError.pasteFailed("Paste cancelled.")))
+                    return
+                }
+
                 let pasted = self.simulateCommandV()
                 if !pasted {
                     completion(.failure(DictationError.pasteFailed("Could not synthesize Cmd-V — Accessibility may be missing.")))
@@ -57,6 +98,11 @@ final class PasteManager {
 
                 if remaining > 1 {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        guard stillValid() else {
+                            self.restoreSnapshot(snapshot, on: pb, after: 0.1)
+                            completion(.failure(DictationError.pasteFailed("Paste cancelled.")))
+                            return
+                        }
                         pb.clearContents()
                         pb.setString(text, forType: .string)
                         attemptPaste(remaining: remaining - 1)
@@ -66,6 +112,8 @@ final class PasteManager {
 
                 if autoSubmit {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        // Never send Return into an app the user has moved to.
+                        guard stillValid() else { return }
                         _ = self.simulateReturn()
                     }
                 }
@@ -193,7 +241,15 @@ final class PasteManager {
 
     private func restoreSnapshot(_ snapshot: PasteboardSnapshot?, on pb: NSPasteboard, after delay: TimeInterval) {
         guard let snapshot else { return }
+        // Remember where the pasteboard was when we scheduled this. If the user
+        // copies something during the delay, that's newer than what we're
+        // holding and restoring would silently destroy it.
+        let expectedChangeCount = pb.changeCount
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard pb.changeCount == expectedChangeCount else {
+                Log.paste.info("Skipped pasteboard restore — user copied something newer")
+                return
+            }
             pb.clearContents()
             for bag in snapshot.items {
                 let item = NSPasteboardItem()

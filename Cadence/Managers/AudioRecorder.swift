@@ -34,8 +34,26 @@ final class AudioRecorder: ObservableObject {
     private var audioFile: AVAudioFile?
     private var startedAt: Date?
     private var maxRecordingTimer: Timer?
+    private var idleTimer: Timer?
     private var levelSamples: [Float] = []
     private var fileURL: URL?
+
+    /// Guards every piece of state the tap callback touches: `audioFile`,
+    /// `levelSamples`, and `recordingActive`.
+    ///
+    /// The tap fires on an AVAudioEngine-owned queue roughly every 21ms at
+    /// 48kHz/1024 frames, while `startRecording` / `stopRecording` / `cancel`
+    /// run on main. Previously they shared this state with no synchronisation
+    /// at all: main's `defer { audioFile = nil }` could release the file while
+    /// the tap was mid-`write(from:)`, and `levelSamples.removeAll()` could run
+    /// while the tap was reallocating it on `append` — a textbook CoW crash.
+    /// Releasing the key inside any tap window could hit either one, which made
+    /// this a live crash risk on every single dictation.
+    private let stateLock = NSLock()
+
+    /// Non-published mirror of `isRecording`, safe to read off the main thread.
+    /// `isRecording` stays `@Published` for SwiftUI and is only touched on main.
+    private var recordingActive = false
 
     private let preferredSampleRate: Double = 16_000
     /// How much pre-key-press audio to keep in memory so we never miss
@@ -62,16 +80,47 @@ final class AudioRecorder: ObservableObject {
             try setUpEngine()
             try engine.start()
             Log.audio.info("AudioRecorder: engine warmed up")
+            scheduleIdleRelease()
         } catch {
             Log.audio.error("AudioRecorder warmUp failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    /// Tear down the engine. Used on app quit.
+    /// Tear down the engine. Used on app quit and on idle release.
     func shutDown() {
+        idleTimer?.invalidate()
+        idleTimer = nil
         if engine.isRunning {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
+            Log.audio.info("AudioRecorder: engine released")
+        }
+    }
+
+    // MARK: - Idle release
+    //
+    // `warmUp()` is called at launch so the 450ms pre-roll can catch words
+    // spoken a beat before the key registers. The cost is that the tap stays
+    // installed, which lights the macOS microphone indicator for as long as the
+    // app is running — while Info.plist tells the user the mic is used "only
+    // while you hold your push-to-talk key". `shutDown()` also had zero callers,
+    // so the engine was never torn down, not even on quit.
+    //
+    // Releasing after a quiet period keeps pre-roll for an active session and
+    // gives the mic back when the app is genuinely idle. `startRecording()`
+    // already rebuilds the engine if it finds it stopped, so waking up is safe;
+    // the only cost is losing pre-roll on the first dictation after a lull.
+
+    private static let idleReleaseAfter: TimeInterval = 180
+
+    private func scheduleIdleRelease() {
+        idleTimer?.invalidate()
+        idleTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.idleReleaseAfter,
+            repeats: false
+        ) { [weak self] _ in
+            guard let self, !self.isRecording else { return }
+            self.shutDown()
         }
     }
 
@@ -79,7 +128,8 @@ final class AudioRecorder: ObservableObject {
 
     func startRecording() throws {
         guard !isRecording else { return }
-        levelSamples.removeAll()
+        idleTimer?.invalidate()
+        idleTimer = nil
 
         // Make sure the engine is alive. If a device change killed it,
         // rebuild and warm up again right now.
@@ -109,8 +159,9 @@ final class AudioRecorder: ObservableObject {
             AVLinearPCMIsNonInterleaved: false,
         ]
 
+        let file: AVAudioFile
         do {
-            audioFile = try AVAudioFile(
+            file = try AVAudioFile(
                 forWriting: url,
                 settings: settings,
                 commonFormat: .pcmFormatInt16,
@@ -121,8 +172,15 @@ final class AudioRecorder: ObservableObject {
         }
         fileURL = url
 
+        // Publish the file, clear the meter, and arm the tap as one atomic step
+        // so the tap can never observe a half-configured session.
+        stateLock.lock()
+        audioFile = file
+        levelSamples.removeAll()
         // Flush the pre-roll buffer into the new file so the first words are present.
-        flushPreRoll(into: audioFile, format: writeFormat)
+        flushPreRoll(into: file, format: writeFormat)
+        recordingActive = true
+        stateLock.unlock()
 
         startedAt = Date()
         isRecording = true
@@ -153,19 +211,31 @@ final class AudioRecorder: ObservableObject {
         isRecording = false
         currentLevel = 0
 
+        // Disarm the tap and take the file and meter under the lock. This blocks
+        // until any in-flight `write(from:)` finishes, so the file is never
+        // released out from under the audio thread, and the samples are copied
+        // rather than read concurrently.
+        stateLock.lock()
+        recordingActive = false
+        audioFile = nil
+        let samples = levelSamples
+        levelSamples.removeAll()
+        stateLock.unlock()
+
         defer {
-            audioFile = nil
             fileURL = nil
             // Reset pre-roll AFTER recording stops so the next session starts fresh.
             resetPreRoll()
+            // Start the clock on giving the microphone back.
+            scheduleIdleRelease()
         }
 
         guard let url = fileURL else {
             throw DictationError.audioCaptureFailed("Recording finalized with no output file")
         }
 
-        let avg = levelSamples.isEmpty ? -120 : levelSamples.reduce(0, +) / Float(levelSamples.count)
-        let peak = levelSamples.max() ?? -120
+        let avg = samples.isEmpty ? -120 : samples.reduce(0, +) / Float(samples.count)
+        let peak = samples.max() ?? -120
         Log.audio.info("Recording stopped after \(duration, format: .fixed(precision: 2), privacy: .public)s (peak \(peak, format: .fixed(precision: 1), privacy: .public) dB)")
         return RecordingResult(fileURL: url, duration: duration, averagePower: avg, peakPower: peak)
     }
@@ -178,12 +248,20 @@ final class AudioRecorder: ObservableObject {
         isRecording = false
         currentLevel = 0
 
+        // Same ordering as stopRecording: disarm the tap under the lock before
+        // touching the file, so a write in flight can't outlive it.
+        stateLock.lock()
+        recordingActive = false
+        audioFile = nil
+        levelSamples.removeAll()
+        stateLock.unlock()
+
         if let url = fileURL {
             try? FileManager.default.removeItem(at: url)
         }
-        audioFile = nil
         fileURL = nil
         resetPreRoll()
+        scheduleIdleRelease()
         Log.audio.info("Recording cancelled")
     }
 
@@ -237,9 +315,9 @@ final class AudioRecorder: ObservableObject {
             let rms = sqrtf(sum / Float(max(1, frameCount)))
             let db = 20 * log10f(max(rms, 1e-7))
             DispatchQueue.main.async { [weak self] in self?.currentLevel = db }
-            if isRecording {
-                levelSamples.append(db)
-            }
+            stateLock.lock()
+            if recordingActive { levelSamples.append(db) }
+            stateLock.unlock()
         }
 
         // 2) Convert to 16 kHz mono Int16.
@@ -268,14 +346,22 @@ final class AudioRecorder: ObservableObject {
             return
         }
 
-        if isRecording {
-            // Append directly to the file.
+        // Hold the lock across the write so main can't release the file
+        // underneath us. `stopRecording`/`cancel` take the same lock before
+        // clearing `audioFile`, so they now block until this write completes
+        // rather than freeing it mid-flight.
+        stateLock.lock()
+        let active = recordingActive
+        if active {
             do {
                 try audioFile?.write(from: outBuffer)
             } catch {
                 Log.audio.error("Audio file write failed: \(error.localizedDescription, privacy: .public)")
             }
-        } else {
+        }
+        stateLock.unlock()
+
+        if !active {
             // Append to the pre-roll ring buffer.
             appendToPreRoll(buffer: outBuffer)
         }

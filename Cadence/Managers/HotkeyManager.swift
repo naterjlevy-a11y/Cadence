@@ -145,7 +145,13 @@ final class HotkeyManager {
     // MARK: - Event handling
 
     private func handle(nsEvent ev: NSEvent) {
-        guard !UserPreferences.shared.paused else { return }
+        // Pausing must never strand an in-flight recording. This used to be a
+        // blanket `guard !paused else { return }`, so a key-UP that arrived
+        // after the user paused was swallowed — `isRecording` stayed true, the
+        // session never finalized, and the pill sat on screen until the 302s
+        // cap timer. Gate only the START of a session; always let an existing
+        // one finish.
+        if UserPreferences.shared.paused && !isRecording { return }
         let keyCode = Int(ev.keyCode)
         let flags = ev.modifierFlags
 
@@ -421,8 +427,10 @@ final class HotkeyManager {
 
     private func startKeyStateWatchdog() {
         stopKeyStateWatchdog()
-        // Only arm for keys we can poll reliably.
-        guard isPTTKeyPhysicallyDown() != nil else { return }
+        // This used to `return` outright for keys we can't poll — which meant
+        // Caps Lock sessions had NO recovery path at all if a release event was
+        // dropped. We still arm the timer; `checkKeyStillHeld` simply falls back
+        // to an absolute time ceiling when the physical state is unreadable.
         consecutiveKeyUpReads = 0
         holdRecordingStartedAt = Date()
         let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
@@ -448,9 +456,28 @@ final class HotkeyManager {
             consecutiveKeyUpReads = 0
             return
         }
-        // Unknown state (nil) is treated as "still held" — never force-stop on
-        // an ambiguous read.
-        guard isPTTKeyPhysicallyDown() == false else {
+        let physical = isPTTKeyPhysicallyDown()
+
+        // Unpollable key (Caps Lock, or a custom code we can't read). We can't
+        // tell if it's still down, so fall back to an absolute ceiling: no
+        // hold-style session should legitimately outlast the user's configured
+        // max recording length. Without this, a dropped Caps Lock release left
+        // the session — and the pill — running until the 302s cap.
+        if physical == nil {
+            let ceiling = TimeInterval(max(1, UserPreferences.shared.maximumRecordingSeconds))
+            if let started = holdRecordingStartedAt,
+               Date().timeIntervalSince(started) >= ceiling {
+                Log.hotkey.warning("Key-state watchdog: unpollable key exceeded max hold — finalizing.")
+                lastKeyDownTime = nil
+                lastTapTime = nil
+                hybridStartedFromHold = false
+                stopRecording()
+            }
+            return
+        }
+
+        // Known-down: reset and keep waiting.
+        guard physical == false else {
             consecutiveKeyUpReads = 0
             return
         }
