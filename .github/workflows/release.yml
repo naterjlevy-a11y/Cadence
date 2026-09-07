@@ -35,7 +35,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    # macos-14 ships Xcode 15.4, which cannot open the project format (77)
+    # that current XcodeGen emits: "in a future Xcode project file format".
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
