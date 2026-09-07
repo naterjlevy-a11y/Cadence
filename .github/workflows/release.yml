@@ -1,13 +1,23 @@
-# Build, sign, notarize, and upload Cadence DMG on version tags.
+# Build, sign, notarize and publish the Cadence DMG.
 #
-# Required GitHub repository secrets:
+# Signing secrets (all five required for a notarized build):
 #   APPLE_CERTIFICATE_P12_BASE64   — Developer ID Application cert (.p12), base64
 #   APPLE_CERTIFICATE_PASSWORD
 #   APPLE_ID                       — Apple ID email for notarization
 #   APPLE_APP_SPECIFIC_PASSWORD
 #   APPLE_TEAM_ID
 #
+# Without them the job still runs and produces an UNSIGNED DMG, so the build
+# itself stays verifiable. Gatekeeper will refuse an unsigned build on a user's
+# machine, so unsigned output is never attached to a release.
+#
 # Optional:
+#   CLOUD_CONFIG_PLIST_BASE64      — base64 of Cadence/Resources/CloudConfig.plist.
+#                                    That file is gitignored, so without this the
+#                                    build falls back to CloudConfig.example.plist,
+#                                    whose placeholder keys leave isCloudEnabled
+#                                    false. The app still works with a user's own
+#                                    Groq key; Cadence Cloud sign-in does not.
 #   SPARKLE_PRIVATE_KEY            — Ed25519 key for auto-updates
 
 name: Release
@@ -16,6 +26,12 @@ on:
   push:
     tags:
       - "v*"
+  # Lets the build be exercised without cutting a version tag. Manual runs
+  # upload an artifact and never publish a release.
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -23,13 +39,63 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Report what this run can and cannot do before doing any of it. The
+      # previous version died at `security import` with "One or more parameters
+      # passed to a function were not valid", which is what an empty .p12 looks
+      # like and says nothing about the missing secret.
+      - name: Check available secrets
+        id: caps
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERT_PW: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PW: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          CLOUD: ${{ secrets.CLOUD_CONFIG_PLIST_BASE64 }}
+        run: |
+          can_sign=false
+          if [ -n "$CERT" ] && [ -n "$CERT_PW" ] && [ -n "$TEAM" ]; then can_sign=true; fi
+          can_notarize=false
+          if [ "$can_sign" = true ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_PW" ]; then can_notarize=true; fi
+          has_cloud=false
+          if [ -n "$CLOUD" ]; then has_cloud=true; fi
+
+          echo "can_sign=$can_sign"        >> "$GITHUB_OUTPUT"
+          echo "can_notarize=$can_notarize" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Build capabilities"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Code signing | $can_sign |"
+            echo "| Notarization | $can_notarize |"
+            echo "| Cloud config bundled | $has_cloud |"
+            echo ""
+            if [ "$can_sign" != true ]; then
+              echo "**Unsigned build.** Add APPLE_CERTIFICATE_P12_BASE64, APPLE_CERTIFICATE_PASSWORD and APPLE_TEAM_ID to sign."
+            fi
+            if [ "$has_cloud" != true ]; then
+              echo "**No CloudConfig.plist.** Falling back to the example plist, so Cadence Cloud sign-in is disabled in this build. Bring-your-own Groq key still works."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      - name: Bundle cloud config
+        if: ${{ secrets.CLOUD_CONFIG_PLIST_BASE64 != '' }}
+        env:
+          CLOUD_CONFIG_PLIST_BASE64: ${{ secrets.CLOUD_CONFIG_PLIST_BASE64 }}
+        run: |
+          echo "$CLOUD_CONFIG_PLIST_BASE64" | base64 --decode > Cadence/Resources/CloudConfig.plist
+          plutil -lint Cadence/Resources/CloudConfig.plist
 
       - name: Generate Xcode project
         run: xcodegen generate
 
       - name: Import signing certificate
+        if: steps.caps.outputs.can_sign == 'true'
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -41,23 +107,45 @@ jobs:
           echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > cert.p12
           security import cert.p12 -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN"
+          rm -f cert.p12
 
-      - name: Build Release
+      - name: Build (signed)
+        if: steps.caps.outputs.can_sign == 'true'
         run: |
           xcodebuild -project Cadence.xcodeproj \
             -scheme Cadence \
             -configuration Release \
             -destination 'platform=macOS' \
+            -derivedDataPath build \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             build
 
+      - name: Build (unsigned)
+        if: steps.caps.outputs.can_sign != 'true'
+        run: |
+          xcodebuild -project Cadence.xcodeproj \
+            -scheme Cadence \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      # -derivedDataPath pins the output. The old `find ~/Library/Developer/...`
+      # searched a shared cache and took `head -1`, which is whatever turned up
+      # first rather than necessarily this build.
       - name: Create DMG
         run: |
-          APP=$(find ~/Library/Developer/Xcode/DerivedData -name 'Cadence.app' -path '*/Release/*' | head -1)
+          APP="build/Build/Products/Release/Cadence.app"
+          test -d "$APP" || { echo "::error::Cadence.app not found at $APP"; exit 1; }
           hdiutil create -volname Cadence -srcfolder "$APP" -ov -format UDZO Cadence.dmg
+          ls -lh Cadence.dmg
 
-      - name: Notarize
+      - name: Notarize and staple
+        if: steps.caps.outputs.can_notarize == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -69,9 +157,27 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
           xcrun stapler staple Cadence.dmg
+          xcrun stapler validate Cadence.dmg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Cadence-dmg
           path: Cadence.dmg
+
+      # Only a notarized build gets attached to a release. An unsigned DMG on a
+      # release page is worse than no DMG: Gatekeeper blocks it and the download
+      # looks broken.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v') && steps.caps.outputs.can_notarize == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" Cadence.dmg --clobber \
+            || gh release create "${GITHUB_REF_NAME}" Cadence.dmg \
+                 --title "Cadence ${GITHUB_REF_NAME}" --generate-notes
+
+      - name: Explain a skipped release
+        if: startsWith(github.ref, 'refs/tags/v') && steps.caps.outputs.can_notarize != 'true'
+        run: |
+          echo "::warning::Tagged build produced a DMG but it was not attached to the release, because notarization secrets are missing. An unsigned DMG would be blocked by Gatekeeper on download."
